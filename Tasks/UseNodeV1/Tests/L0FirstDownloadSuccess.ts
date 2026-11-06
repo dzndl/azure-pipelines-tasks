@@ -47,7 +47,7 @@ tlClone.setVariable = function(key, val) {
 };
 if (process.env["__proxy__"]) {
     tlClone.getHttpProxyConfiguration = function(requestUrl?: string): taskLib.ProxyConfiguration | null {
-        return { proxyUrl: 'http://url.com', proxyUsername: 'username', proxyPassword: 'password', proxyBypassHosts: null};
+        return { proxyUrl: 'http://url.com', proxyUsername: 'username', proxyPassword: 'password', proxyBypassHosts: null, proxyFormattedUrl: 'http://username:password@url.com'};
     }
 }
 tmr.registerMock('azure-pipelines-task-lib/mock-task', tlClone);
@@ -90,7 +90,7 @@ tmr.registerMock('azure-pipelines-tool-lib/tool', {
         let version: string;
         for (let i = versions.length - 1; i >= 0; i--) {
             let potential: string = versions[i];
-            let satisfied: boolean = potential === 'v11.3.0';
+            let satisfied: boolean = potential === '11.3.0';
             if (satisfied) {
                 version = potential;
                 break;
@@ -102,6 +102,15 @@ tmr.registerMock('azure-pipelines-tool-lib/tool', {
         return '11.3.0';
     },
     downloadTool(url) {
+        if (url === `https://nodejs.org/dist/v11.3.0/node-v11.3.0-win-${os.arch()}.7z` ||
+            url === `https://nodejs.org/dist/v11.3.0/node-v11.3.0-${os.platform()}-${os.arch()}.tar.gz`) {
+            return 'location';
+        }
+        else {
+            throw new Error('Incorrect URL');
+        }
+    },
+    downloadToolWithRetries(url) {
         if (url === `https://nodejs.org/dist/v11.3.0/node-v11.3.0-win-${os.arch()}.7z` ||
             url === `https://nodejs.org/dist/v11.3.0/node-v11.3.0-${os.platform()}-${os.arch()}.tar.gz`) {
             return 'location';
@@ -127,7 +136,7 @@ tmr.registerMock('azure-pipelines-tool-lib/tool', {
 const fsClone = fs;
 fsClone.existsSync = function(pathToFile: string): boolean {
     if (pathToFile !== path.resolve(process.cwd(), '.npmrc')) {
-        throw 'Incorrect path ' + pathToFile
+        return fs.existsSync(pathToFile);
     }
     return false;
 };

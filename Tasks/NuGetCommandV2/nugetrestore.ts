@@ -1,19 +1,20 @@
 import * as path from "path";
 import * as tl from "azure-pipelines-task-lib/task";
-import {IExecOptions, IExecSyncResult} from "azure-pipelines-task-lib/toolrunner";
+import { IExecOptions } from "azure-pipelines-task-lib/toolrunner";
 
-import * as auth from "packaging-common/nuget/Authentication";
-import * as commandHelper from "packaging-common/nuget/CommandHelper";
-import {NuGetConfigHelper2} from "packaging-common/nuget/NuGetConfigHelper2";
-import * as ngToolRunner from "packaging-common/nuget/NuGetToolRunner2";
-import peParser = require("packaging-common/pe-parser/index");
-import {VersionInfo} from "packaging-common/pe-parser/VersionResource";
-import * as nutil from "packaging-common/nuget/Utility";
-import * as pkgLocationUtils from "packaging-common/locationUtilities";
-import * as telemetry from "utility-common/telemetry";
-import INuGetCommandOptions from "packaging-common/nuget/INuGetCommandOptions2";
-import { getProjectAndFeedIdFromInputParam } from 'packaging-common/util';
-import { logError } from 'packaging-common/util';
+import * as auth from "azure-pipelines-tasks-packaging-common/nuget/Authentication";
+import * as commandHelper from "azure-pipelines-tasks-packaging-common/nuget/CommandHelper";
+import { NuGetConfigHelper2 } from "azure-pipelines-tasks-packaging-common/nuget/NuGetConfigHelper2";
+import * as ngToolRunner from "azure-pipelines-tasks-packaging-common/nuget/NuGetToolRunner2";
+import peParser = require("azure-pipelines-tasks-packaging-common/pe-parser/index");
+import { VersionInfo } from "azure-pipelines-tasks-packaging-common/pe-parser/VersionResource";
+import * as nutil from "azure-pipelines-tasks-packaging-common/nuget/Utility";
+import * as pkgLocationUtils from "azure-pipelines-tasks-packaging-common/locationUtilities";
+import * as telemetry from "azure-pipelines-tasks-utility-common/telemetry";
+import INuGetCommandOptions from "azure-pipelines-tasks-packaging-common/nuget/INuGetCommandOptions2";
+import { getProjectAndFeedIdFromInputParam } from "azure-pipelines-tasks-packaging-common/util";
+import { logError } from "azure-pipelines-tasks-packaging-common/util";
+import { getVersionFallback } from "azure-pipelines-tasks-packaging-common/nuget/ProductVersionHelper";
 
 class RestoreOptions implements INuGetCommandOptions {
     constructor(
@@ -84,7 +85,7 @@ export async function run(nuGetPath: string): Promise<void> {
         const useV2CredProvider: boolean = ngToolRunner.isCredentialProviderV2Enabled(quirks);
         const credProviderPath: string = nutil.locateCredentialProvider(useV2CredProvider);
         const useCredConfig = ngToolRunner.isCredentialConfigEnabled(quirks)
-                                && (!useV1CredProvider && !useV2CredProvider);
+            && (!useV1CredProvider && !useV2CredProvider);
 
         // Setting up auth-related variables
         tl.debug("Setting up auth");
@@ -115,7 +116,7 @@ export async function run(nuGetPath: string): Promise<void> {
 
         // Setting up sources, either from provided config file or from feed selection
         tl.debug("Setting up sources");
-        let nuGetConfigPath : string = undefined;
+        let nuGetConfigPath: string = undefined;
         let configFile: string = undefined;
         let selectOrConfig = tl.getInput("selectOrConfig");
         // This IF is here in order to provide a value to nuGetConfigPath (if option selected, if user provided it)
@@ -135,13 +136,15 @@ export async function run(nuGetPath: string): Promise<void> {
 
         // If there was no nuGetConfigPath, NuGetConfigHelper will create a temp one
         const nuGetConfigHelper = new NuGetConfigHelper2(
-                    nuGetPath,
-                    nuGetConfigPath,
-                    authInfo,
-                    environmentSettings,
-                    null);
+            nuGetPath,
+            nuGetConfigPath,
+            authInfo,
+            environmentSettings,
+            null);
 
         let credCleanup = () => { return; };
+
+        let isNugetOrgBehaviorWarn = false;
 
         // Now that the NuGetConfigHelper was initialized with all the known information we can proceed
         // and check if the user picked the 'select' option to fill out the config file if needed
@@ -165,15 +168,25 @@ export async function run(nuGetPath: string): Promise<void> {
 
             const includeNuGetOrg = tl.getBoolInput("includeNuGetOrg", false);
             if (includeNuGetOrg) {
-                const nuGetSource: auth.IPackageSource = nuGetVersion.productVersion.a < 3
-                                        ? auth.NuGetOrgV2PackageSource
-                                        : auth.NuGetOrgV3PackageSource;
+                // If includeNuGetOrg is true, check the INCLUDE_NUGETORG_BEHAVIOR env variable to determine task result 
+                // this allows compliance checks to warn or break the task if consuming from nuget.org directly 
+                const nugetOrgBehavior = includeNuGetOrg ? tl.getVariable("INCLUDE_NUGETORG_BEHAVIOR") : undefined;
+                tl.debug(`NugetOrgBehavior: ${nugetOrgBehavior}`);
+
+                if (nugetOrgBehavior?.toLowerCase() == "fail") {
+                    throw new Error(tl.loc("Error_IncludeNuGetOrgEnabled"));
+                } else if (nugetOrgBehavior?.toLowerCase() == "warn") {
+                    isNugetOrgBehaviorWarn = true;
+                }
+
+                const nuGetSource: auth.IPackageSource = getVersionFallback(nuGetVersion).a < 3
+                    ? auth.NuGetOrgV2PackageSource
+                    : auth.NuGetOrgV3PackageSource;
                 sources.push(nuGetSource);
             }
 
             // Creating NuGet.config for the user
-            if (sources.length > 0)
-            {
+            if (sources.length > 0) {
                 // tslint:disable-next-line:max-line-length
                 tl.debug(`Adding the following sources to the config file: ${sources.map((x) => x.feedName).join(";")}`);
                 nuGetConfigHelper.addSourcesToTempNuGetConfig(sources);
@@ -201,8 +214,7 @@ export async function run(nuGetPath: string): Promise<void> {
             let useConfigFile: boolean = selectOrConfig === "select" || (selectOrConfig === "config" && !!nuGetConfigPath);
             configFile = useConfigFile ? nuGetConfigHelper.tempNugetConfigPath : undefined;
 
-            if (useConfigFile)
-            {
+            if (useConfigFile) {
                 credCleanup = () => tl.rmRF(nuGetConfigHelper.tempNugetConfigPath);
             }
         }
@@ -221,13 +233,15 @@ export async function run(nuGetPath: string): Promise<void> {
                 authInfo);
 
             for (const solutionFile of filesList) {
-                restorePackages(solutionFile, restoreOptions);
+                await restorePackages(solutionFile, restoreOptions);
             }
         } finally {
             credCleanup();
         }
 
-        tl.setResult(tl.TaskResult.Succeeded, tl.loc("PackagesInstalledSuccessfully"));
+        isNugetOrgBehaviorWarn
+            ? tl.setResult(tl.TaskResult.SucceededWithIssues, tl.loc("Warning_IncludeNuGetOrgEnabled"))
+            : tl.setResult(tl.TaskResult.Succeeded, tl.loc("PackagesInstalledSuccessfully"));
     } catch (err) {
         tl.error(err);
 
@@ -239,7 +253,7 @@ export async function run(nuGetPath: string): Promise<void> {
     }
 }
 
-function restorePackages(solutionFile: string, options: RestoreOptions): IExecSyncResult {
+async function restorePackages(solutionFile: string, options: RestoreOptions): Promise<number> {
     const nugetTool = ngToolRunner.createNuGetToolRunner(options.nuGetPath, options.environment, options.authInfo);
 
     nugetTool.arg("restore");
@@ -270,12 +284,24 @@ function restorePackages(solutionFile: string, options: RestoreOptions): IExecSy
         nugetTool.arg(options.configFile);
     }
 
-    const execResult = nugetTool.execSync({ cwd: path.dirname(solutionFile) } as IExecOptions);
-    if (execResult.code !== 0) {
-        telemetry.logResult("Packaging", "NuGetCommand", execResult.code);
+    // Listen for stderr output to write timeline results for the build.
+    let stdErrText = "";
+    nugetTool.on('stderr', (data: Buffer) => {
+        stdErrText += data.toString('utf-8');
+    });
+
+    const execResult = await nugetTool.exec({
+        cwd: path.dirname(solutionFile),
+        ignoreReturnCode: true,
+        externalOutput: { source: "childProcess" }
+    } as IExecOptions);
+
+    if (execResult !== 0) {
+        telemetry.logResult("Packaging", "NuGetCommand", execResult);
         throw tl.loc("Error_NugetFailedWithCodeAndErr",
-            execResult.code,
-            execResult.stderr ? execResult.stderr.trim() : execResult.stderr);
+            execResult,
+            stdErrText.trim());
     }
+
     return execResult;
 }

@@ -1,6 +1,6 @@
 {
   "loc.friendlyName": "PowerShell in computer di destinazione",
-  "loc.helpMarkDown": "[Altre informazioni](https://go.microsoft.com/fwlink/?linkid=627414)",
+  "loc.helpMarkDown": "[Altre informazioni su questa attività](https://go.microsoft.com/fwlink/?linkid=627414)",
   "loc.description": "Consente di eseguire script PowerShell nei computer remoti",
   "loc.instanceNameFormat": "Esegui PowerShell in $(EnvironmentName)",
   "loc.releaseNotes": "Novità della versione 2.0: <br/>&nbsp;&nbsp; Rimozione del supporto per computer DTL legacy.",
@@ -34,7 +34,7 @@
   "loc.messages.PS_TM_DeploymentStartedForMachine0": "Distribuzione avviata per il computer: '{0}'",
   "loc.messages.PS_TM_DeploymentStatusForMachine01": "Stato della distribuzione per il computer '{0}': '{1}'",
   "loc.messages.PS_TM_DeploymentFailedOnMachine0WithFollowingMessage1": "La distribuzione nel computer '{0}' non è riuscita. Messaggio: '{1}'",
-  "loc.messages.PS_TM_ResourceDoesnotHaveWinRMServiceConfigured": "Il servizio WinRM non è configurato per la risorsa '{0}'. Configurarlo in Risorse macchine virtuali di Azure. Per maggiori dettagli, vedere '{1}'",
+  "loc.messages.PS_TM_ResourceDoesnotHaveWinRMServiceConfigured": "Il servizio WinRM non è configurato per la risorsa '{0}'. Configurarlo in Risorse macchine virtuali di Azure. Per altri dettagli, fare riferimento a '{1}'",
   "loc.messages.PS_TM_0PortWasNotProvidedForResource1": "Non è stata specificata la porta {0} per la risorsa '{1}'",
   "loc.messages.PS_TM_DeploymentOnOneOrMoreMachinesFailed": "La distribuzione in uno o più computer non è riuscita."
 }

@@ -1,7 +1,7 @@
 {
   "loc.friendlyName": "App Center-Verteilung",
   "loc.helpMarkDown": "Hilfe zu dieser Aufgabe finden Sie auf der Visual Studio App Center-[Supportwebsite](https://aka.ms/appcentersupport/).",
-  "loc.description": "Distribute app builds to testers and users via Visual Studio App Center",
+  "loc.description": "Hiermit verteilen Sie App-Builds über Visual Studio App Center an Tester und Benutzer.",
   "loc.instanceNameFormat": "\"$(app)\" in Visual Studio App Center bereitstellen",
   "loc.releaseNotes": "Unterstützung für mehrere Ziele hinzugefügt.",
   "loc.group.displayName.symbols": "Symbole",
@@ -39,5 +39,6 @@
   "loc.messages.CannotFindAnyFile": "Es kann keine auf \"%s\" basierende Datei gefunden werden.",
   "loc.messages.FoundMultipleFiles": "Es wurden mehrere Dateien gefunden, die \"%s\" entsprechen.",
   "loc.messages.FailedToCreateFile": "Fehler beim Erstellen von \"%s\": %s.",
-  "loc.messages.FailedToFindFile": "%s wurde unter %s nicht gefunden."
+  "loc.messages.FailedToFindFile": "%s wurde unter %s nicht gefunden.",
+  "loc.messages.DeprecatedTask": "Die Aufgabe AppCenterDistribute@2 (App Center verteilen) ist seit dem 14. November 2022 veraltet und wird in Kürze eingestellt. Verwenden Sie stattdessen die Aufgabe AppCenterDistribute@3. Besuchen Sie https://aka.ms/azdo-deprecated-tasks, um weitere Informationen zu veralteten Aufgaben zu erhalten."
 }

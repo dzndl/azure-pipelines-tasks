@@ -14,11 +14,11 @@
   "author": "Microsoft Corporation",
   "version": {
     "Major": 0,
-    "Minor": 176,
+    "Minor": 283,
     "Patch": 0
   },
   "demands": [],
-  "minimumAgentVersion": "2.0.0",
+  "minimumAgentVersion": "2.209.0",
   "groups": [
     {
       "name": "AzureDetails",
@@ -166,8 +166,17 @@
   ],
   "instanceNameFormat": "ms-resource:loc.instanceNameFormat",
   "execution": {
-    "Node10": {
-      "target": "main.js"
+    "Node16": {
+      "target": "main.js",
+      "argumentFormat": ""
+    },
+    "Node20_1": {
+      "target": "main.js",
+      "argumentFormat": ""
+    },
+    "Node24": {
+      "target": "main.js",
+      "argumentFormat": ""
     }
   },
   "messages": {
@@ -219,6 +228,11 @@
     "CouldNotFetchAccessTokenforAzureStatusCode": "ms-resource:loc.messages.CouldNotFetchAccessTokenforAzureStatusCode",
     "CouldNotFetchAccessTokenforMSIDueToMSINotConfiguredProperlyStatusCode": "ms-resource:loc.messages.CouldNotFetchAccessTokenforMSIDueToMSINotConfiguredProperlyStatusCode",
     "CouldNotFetchAccessTokenforMSIStatusCode": "ms-resource:loc.messages.CouldNotFetchAccessTokenforMSIStatusCode",
-    "ExpiredServicePrincipal": "ms-resource:loc.messages.ExpiredServicePrincipal"
+    "ExpiredServicePrincipal": "ms-resource:loc.messages.ExpiredServicePrincipal",
+    "ScriptArgsSanitized": "ms-resource:loc.messages.ScriptArgsSanitized",
+    "ScriptArgsSanitizedBash": "ms-resource:loc.messages.ScriptArgsSanitizedBash",
+    "InvalidWindowsCustomScript": "ms-resource:loc.messages.InvalidWindowsCustomScript",
+    "WindowsScriptPayloadTooLarge": "ms-resource:loc.messages.WindowsScriptPayloadTooLarge",
+    "WindowsScriptCleanupFailed": "ms-resource:loc.messages.WindowsScriptCleanupFailed"
   }
 }

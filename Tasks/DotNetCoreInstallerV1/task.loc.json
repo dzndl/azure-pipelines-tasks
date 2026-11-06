@@ -13,10 +13,13 @@
   "author": "Microsoft Corporation",
   "version": {
     "Major": 1,
-    "Minor": 2,
+    "Minor": 283,
     "Patch": 0
   },
   "deprecated": true,
+  "retiredDate": "2026-11-24",
+  "removalDate": "2024-01-31",
+  "deprecationMessage": "The DotNetCoreInstaller@1 (.NET Core SDK/runtime installer) task has been deprecated since August 22, 2019 and will soon be retired. Use the UseDotNet@2 task instead.",
   "preview": "true",
   "satisfies": [
     "DotNetCore"
@@ -82,6 +85,13 @@
   "execution": {
     "Node10": {
       "target": "dotnetcoreinstaller.js"
+    },
+    "Node16": {
+      "target": "dotnetcoreinstaller.js"
+    },
+    "Node20_1": {
+      "target": "dotnetcoreinstaller.js",
+      "argumentFormat": ""
     }
   },
   "messages": {
@@ -148,6 +158,7 @@
     "FilesDataIsIncorrectInVersion": "ms-resource:loc.messages.FilesDataIsIncorrectInVersion",
     "VersionFilesDataIncorrect": "ms-resource:loc.messages.VersionFilesDataIncorrect",
     "VersionInformationNotComplete": "ms-resource:loc.messages.VersionInformationNotComplete",
-    "FailedWhileExtractingPacakge": "ms-resource:loc.messages.FailedWhileExtractingPacakge"
+    "FailedWhileExtractingPacakge": "ms-resource:loc.messages.FailedWhileExtractingPacakge",
+    "DeprecatedTask": "ms-resource:loc.messages.DeprecatedTask"
   }
 }

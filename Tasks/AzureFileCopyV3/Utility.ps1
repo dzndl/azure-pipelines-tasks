@@ -4,6 +4,10 @@ $ErrorActionPreference = 'Stop'
 $azureStackEnvironment = "AzureStack"
 $jobId = $env:SYSTEM_JOBID;
 
+$featureFlags = @{
+    retireAzureRM = [System.Convert]::ToBoolean($env:RETIRE_AZURERM_POWERSHELL_MODULE)
+}
+
 function Get-AzureCmdletsVersion
 {
     return (Get-Module AzureRM -ListAvailable).Version
@@ -20,12 +24,17 @@ function Get-AzureUtility
 	$azureUtilityARM = "AzureUtilityARM.ps1"
     $azUtilityVersion100 = "AzureUtilityAz1.0.ps1"
 
-    if (Get-Module Az.Accounts -ListAvailable){
-        Write-Verbose "Az module is installed in the agent."
+    if ($featureFlags.retireAzureRM) {
         return $azUtilityVersion100
     }
-	
-    return $azureUtilityARM
+    else {
+        if (Get-Module Az.Accounts -ListAvailable) {
+            Write-Verbose "Az module is installed in the agent."
+            return $azUtilityVersion100
+        }
+        Write-Warning "Az module is not installed in the agent."
+        return $azureUtilityARM
+    }
 }
 
 function Get-Endpoint
@@ -59,7 +68,8 @@ function Validate-AzurePowershellVersion
 function Get-StorageKey
 {
     param([string][Parameter(Mandatory=$true)]$storageAccountName,
-          [object][Parameter(Mandatory=$true)]$endpoint)
+        [object][Parameter(Mandatory=$true)]$endpoint,
+        [string][Parameter(Mandatory=$false)]$connectedServiceNameARM)
 
     $storageAccountName = $storageAccountName.Trim()
 
@@ -67,7 +77,7 @@ function Get-StorageKey
     Validate-AzurePowershellVersion
 
     # getting storage account key from ARM endpoint
-    $storageKey = Get-AzureStorageKeyFromARM -storageAccountName $storageAccountName -serviceEndpoint $endpoint
+    $storageKey = Get-AzureStorageKeyFromARM -storageAccountName $storageAccountName -serviceEndpoint $endpoint $connectedServiceNameARM
 
     return $storageKey
 }
@@ -75,12 +85,13 @@ function Get-StorageKey
 function Get-blobStorageEndpoint
 {
     param([string][Parameter(Mandatory=$true)]$storageAccountName,
-          [object][Parameter(Mandatory=$true)]$endpoint)
+        [object][Parameter(Mandatory=$true)]$endpoint,
+        [string][Parameter(Mandatory=$false)]$connectedServiceNameARM)
 
     $storageAccountName = $storageAccountName.Trim()
 
     # getting storage account key from ARM endpoint
-    $blobStorageEndpoint = Get-AzureBlobStorageEndpointFromARM -storageAccountName $storageAccountName -endpoint $endpoint
+    $blobStorageEndpoint = Get-AzureBlobStorageEndpointFromARM $storageAccountName $endpoint $connectedServiceNameARM
 
     return $blobStorageEndpoint
 }
@@ -88,13 +99,14 @@ function Get-blobStorageEndpoint
 function Get-StorageAccountType
 {
     param([string][Parameter(Mandatory=$true)]$storageAccountName,
-          [object][Parameter(Mandatory=$true)]$endpoint)
+        [object][Parameter(Mandatory=$true)]$endpoint,
+        [string][Parameter(Mandatory=$false)]$connectedServiceNameARM)
 
     $storageAccountName = $storageAccountName.Trim()
     # getting storage account type from ARM endpoint
-    $storageAccountType = Get-AzureStorageAccountTypeFromARM -storageAccountName $storageAccountName -endpoint $endpoint
+    $storageAccountType = Get-AzureStorageAccountTypeFromARM $storageAccountName $endpoint $connectedServiceNameARM
 
-	if($storageAccountType -ne $null)
+	if($null -ne $storageAccountType)
     {
         return $storageAccountType.ToString()
     }
@@ -121,7 +133,9 @@ function Upload-FilesToAzureContainer
           [string]$additionalArguments,
           [string][Parameter(Mandatory=$true)]$destinationType,
           [bool]$useDefaultArguments,
-          [string]$azCopyLogFilePath
+          [string]$azCopyLogFilePath,
+          [bool]$useSanitizerActivate = $false,
+          [bool]$useSourcePathHardening = $false
     )
 
     try
@@ -140,6 +154,7 @@ function Upload-FilesToAzureContainer
 
         $blobPrefix = $blobPrefix.Trim()
         $containerURL = [string]::Format("{0}/{1}/{2}", $blobStorageEndpoint.Trim("/"), $containerName, $blobPrefix).Trim("/")
+        $rawContainerURL = $containerURL
         $containerURL = $containerURL.Replace('$','`$')
         $azCopyExeLocation = Join-Path -Path $azCopyLocation -ChildPath "AzCopy.exe"
         $responseFile = Get-VstsTaskVariable -Name "VSTS_TASKVARIABLE_AFC_V2_ARM_STORAGE_KEY_FILE"
@@ -154,11 +169,19 @@ function Upload-FilesToAzureContainer
             )
         }
 
-        Write-Output "##[command] & `"$azCopyExeLocation`" /Source:`"$resolvedSourcePath`" /Dest:`"$containerURL`" /@:`"$responseFile`" $additionalArguments"
-
-        $uploadToBlobCommand = "& `"$azCopyExeLocation`" /Source:`"$resolvedSourcePath`" /Dest:`"$containerURL`" /@:`"$responseFile`" $additionalArguments"
-
-        Invoke-Expression $uploadToBlobCommand
+        if ($useSourcePathHardening) {
+            $splitArguments = @(Split-AdditionalArguments -additionalArguments $additionalArguments)
+            Write-Output "##[command] & `"$azCopyExeLocation`" /Source:`"$resolvedSourcePath`" /Dest:`"$rawContainerURL`" /@:`"$responseFile`" $splitArguments"
+            & $azCopyExeLocation /Source:$resolvedSourcePath /Dest:$rawContainerURL /@:$responseFile @splitArguments
+        } elseif ($useSanitizerActivate) {
+            $sanitizedArguments = [regex]::Split($additionalArguments, ' (?=(?:[^"]|"[^"]*")*$)')
+            Write-Output "##[command] & azcopy /Source:`"$resolvedSourcePath`" /Dest:`"$containerURL`" /@:`"$responseFile`" $sanitizedArguments"
+            & $azCopyExeLocation /Source:$resolvedSourcePath /Dest:$containerURL /@:$responseFile $sanitizedArguments
+        } else {
+            Write-Output "##[command] & `"$azCopyExeLocation`" /Source:`"$resolvedSourcePath`" /Dest:`"$containerURL`" /@:`"$responseFile`" $additionalArguments"
+            $uploadToBlobCommand = "& `"$azCopyExeLocation`" /Source:`"$resolvedSourcePath`" /Dest:`"$containerURL`" /@:`"$responseFile`" $additionalArguments"
+            Invoke-Expression $uploadToBlobCommand
+        }
 
         if($LASTEXITCODE -eq 0)
         {
@@ -433,24 +456,24 @@ function Get-MachinesFqdnsForPublicIP
 
     if(-not [string]::IsNullOrEmpty($resourceGroupName)-and $publicIPAddressResources -and $networkInterfaceResources)
     {
-        Write-Verbose "Trying to get FQDN for the azureRM VM resources under public IP from resource Group $resourceGroupName" 
+        Write-Verbose "Trying to get FQDN for the azureRM VM resources under public IP from resource Group $resourceGroupName"
 
         #Map the ipc to the fqdn
         foreach($publicIp in $publicIPAddressResources)
         {
             if(-not [string]::IsNullOrEmpty($publicIp.IpConfiguration.Id))
-            {   
+            {
                 $publicIPKey = $publicIp.IpConfiguration.Id.ToLower()
-                Write-Verbose "Adding entry to FQDN map with key $publicIPKey" 
+                Write-Verbose "Adding entry to FQDN map with key $publicIPKey"
 
                 if(-not [string]::IsNullOrEmpty($publicIP.DnsSettings.Fqdn))
                 {
-                    Write-Verbose "Inserting to FQDN map with value (FQDN) : $publicIPKey" 
+                    Write-Verbose "Inserting to FQDN map with value (FQDN) : $publicIPKey"
                     $fqdnMap[$publicIPKey] =  $publicIP.DnsSettings.Fqdn
                 }
                 elseif(-not [string]::IsNullOrEmpty($publicIP.IpAddress))
                 {
-                    Write-Verbose "Inserting to FQDN map with value (IP Address) : $publicIPKey" 
+                    Write-Verbose "Inserting to FQDN map with value (IP Address) : $publicIPKey"
                     $fqdnMap[$publicIPKey] =  $publicIP.IpAddress
                 }
             }
@@ -635,7 +658,7 @@ function Get-FrontEndPorts
             Write-Verbose ($portList | Format-List | Out-String) -Verbose
         }
     }
-    
+
     Write-Verbose "Got front end ports for $backEndPort"
     return $portList
 }
@@ -657,7 +680,7 @@ function Get-AzureRMVMsConnectionDetailsInResourceGroup
     {
         $endpoint = Get-Endpoint -connectedServiceName $connectedServiceName
     }
-    
+
     $isAzureStackEnvironment = $false
     if($endpoint -and $endpoint.Data -and $endpoint.Data.Environment) {
         $environmentName = $Endpoint.Data.Environment
@@ -669,13 +692,14 @@ function Get-AzureRMVMsConnectionDetailsInResourceGroup
 
     if (-not [string]::IsNullOrEmpty($resourceGroupName) -and $azureRMVMResources)
     {
-        
-        if($isAzureStackEnvironment) 
+
+        if($isAzureStackEnvironment)
         {
             Write-Verbose "Fetching resource group resources details for Azure Stack environment."
-            $azureRGResourcesDetails = Get-AzureRMResourceGroupResourcesDetailsForAzureStack -resourceGroupName $resourceGroupName -azureRMVMResources $azureRMVMResources -endpoint $endpoint
+            $azureRGResourcesDetails = Get-AzureRMResourceGroupResourcesDetailsForAzureStack -resourceGroupName $resourceGroupName `
+                -azureRMVMResources $azureRMVMResources -endpoint $endpoint -connectedServiceNameARM $connectedServiceName
         }
-        else 
+        else
         {
             Write-Verbose "Fetching resource group resources details for Azure/National cloud environments."
             $azureRGResourcesDetails = Get-AzureRMResourceGroupResourcesDetails -resourceGroupName $resourceGroupName -azureRMVMResources $azureRMVMResources
@@ -730,7 +754,8 @@ function Get-AzureRMVMsConnectionDetailsInResourceGroup
             if ($enableCopyPrerequisites -eq "true")
             {
                 Write-Verbose "Enabling winrm for virtual machine $resourceName" -Verbose
-                Add-AzureVMCustomScriptExtension -resourceGroupName $resourceGroupName -vmId $resourceId -vmName $resourceName -dnsName $resourceFQDN -location $resource.Location -connectedServiceName $connectedServiceName
+                Add-AzureVMCustomScriptExtension -resourceGroupName $resourceGroupName -vmId $resourceId -vmName $resourceName -dnsName $resourceFQDN `
+                    -location $resource.Location -connectedServiceName $connectedServiceName
             }
         }
 
@@ -751,7 +776,8 @@ function Get-AzureVMResourcesProperties
     {
         $azureRMVMResources = Get-AzureRMVMsInResourceGroup -resourceGroupName  $resourceGroupName
         $filteredAzureRMVMResources = Get-FilteredAzureRMVMsInResourceGroup -azureRMVMResources $azureRMVMResources -resourceFilteringMethod $resourceFilteringMethod -filter $machineNames
-        $azureVMsDetails = Get-AzureRMVMsConnectionDetailsInResourceGroup -resourceGroupName $resourceGroupName -azureRMVMResources $filteredAzureRMVMResources -enableCopyPrerequisites $enableCopyPrerequisites -connectedServiceName $connectedServiceName
+        $azureVMsDetails = Get-AzureRMVMsConnectionDetailsInResourceGroup -resourceGroupName $resourceGroupName -azureRMVMResources $filteredAzureRMVMResources `
+            -enableCopyPrerequisites $enableCopyPrerequisites -connectedServiceName $connectedServiceName
 
         # throw if no azure VMs found in resource group or due to filtering
         if($azureVMsDetails.Count -eq 0)
@@ -900,7 +926,9 @@ function Copy-FilesToAzureVMsFromStorageContainer
         [string]$additionalArguments,
         [string]$azCopyToolLocation,
         [scriptblock]$fileCopyJobScript,
-        [bool]$enableDetailedLogging
+        [bool]$enableDetailedLogging,
+        [bool]$useSanitizerActivate = $false,
+        [bool]$useSourcePathHardening = $false
     )
 
     # Generate storage container URL
@@ -910,7 +938,7 @@ function Copy-FilesToAzureVMsFromStorageContainer
     $azCopyToolFilePaths = Get-ChildItem $azCopyToolLocation | Select-Object -ExpandProperty FullName
 
     $azCopyToolFileContents = @()
-    
+
     foreach ($file in $azCopyToolFilePaths)
     {
         $azCopyToolFileContents += [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($file))
@@ -919,8 +947,24 @@ function Copy-FilesToAzureVMsFromStorageContainer
     $azCopyToolFileNamesString = $azCopyToolFileNames -join ";"
     $azCopyToolFileContentsString = $azCopyToolFileContents -join ";"
 
-    # script block arguments
-    $scriptBlockArgs = " -containerURL '$containerURL' -targetPath '$targetPath' -containerSasToken '$containerSasToken' -additionalArguments '$additionalArguments' -azCopyToolFileNamesString '$azCopyToolFileNamesString' -azCopyToolFileContentsString '$azCopyToolFileContentsString'"
+    $inlineScriptText = $fileCopyJobScript.ToString()
+
+    $disableTargetPathHardening = Get-VstsPipelineFeature -FeatureName 'AzureFileCopy.DisableTargetPathHardening'
+    if (-not $disableTargetPathHardening)
+    {
+        # PowerShell accepts typographic single quotes too, so ASCII-only escaping is insufficient.
+        $escapedContainerURL = [System.Management.Automation.Language.CodeGeneration]::EscapeSingleQuotedStringContent($containerURL)
+        $escapedTargetPath = [System.Management.Automation.Language.CodeGeneration]::EscapeSingleQuotedStringContent($targetPath)
+        $escapedContainerSasToken = [System.Management.Automation.Language.CodeGeneration]::EscapeSingleQuotedStringContent($containerSasToken)
+        $escapedAdditionalArguments = [System.Management.Automation.Language.CodeGeneration]::EscapeSingleQuotedStringContent($additionalArguments)
+        $escapedAzCopyToolFileNamesString = [System.Management.Automation.Language.CodeGeneration]::EscapeSingleQuotedStringContent($azCopyToolFileNamesString)
+        $escapedAzCopyToolFileContentsString = [System.Management.Automation.Language.CodeGeneration]::EscapeSingleQuotedStringContent($azCopyToolFileContentsString)
+        $scriptBlockArgs = " -containerURL '$escapedContainerURL' -targetPath '$escapedTargetPath' -containerSasToken '$escapedContainerSasToken' -additionalArguments '$escapedAdditionalArguments' -azCopyToolFileNamesString '$escapedAzCopyToolFileNamesString' -azCopyToolFileContentsString '$escapedAzCopyToolFileContentsString'"
+    }
+    else
+    {
+        $scriptBlockArgs = " -containerURL '$containerURL' -targetPath '$targetPath' -containerSasToken '$containerSasToken' -additionalArguments '$additionalArguments' -azCopyToolFileNamesString '$azCopyToolFileNamesString' -azCopyToolFileContentsString '$azCopyToolFileContentsString' -disableTargetPathHardening"
+    }
     if($cleanTargetBeforeCopy)
     {
         $scriptBlockArgs += " -CleanTargetBeforeCopy"
@@ -929,10 +973,29 @@ function Copy-FilesToAzureVMsFromStorageContainer
     {
         $scriptBlockArgs += " -EnableDetailedLogging"
     }
+    if($useSanitizerActivate)
+    {
+        $scriptBlockArgs += " -useSanitizerActivate"
+    }
+    if($useSourcePathHardening)
+    {
+        $scriptBlockArgs += " -useSourcePathHardening"
+    }
+
+    # Rollback preserves the original parser dependency: only SourcePath parsing needs it.
+    if (!$disableTargetPathHardening -or $useSourcePathHardening)
+    {
+        $splitAdditionalArgumentsFunctionInfo = Get-Item -Path function:Split-AdditionalArguments -ErrorAction SilentlyContinue
+        if(!$splitAdditionalArgumentsFunctionInfo)
+        {
+            throw "Split-AdditionalArguments function was not found. Ensure the Sanitizer module is imported."
+        }
+        $inlineScriptText = $inlineScriptText.Replace('# Split-AdditionalArguments-Placeholder', $splitAdditionalArgumentsFunctionInfo.ScriptBlock.ToString())
+    }
 
     $remoteScriptJobArguments = @{
         inline = $true;
-        inlineScript = $fileCopyJobScript.ToString();
+        inlineScript = $inlineScriptText;
         scriptArguments = $scriptBlockArgs;
         errorActionPreference = "Stop";
         failOnStdErr = $true;
@@ -961,9 +1024,10 @@ function Copy-FilesToAzureVMsFromStorageContainer
 function Validate-CustomScriptExecutionStatus
 {
     param([string]$resourceGroupName,
-          [string]$vmName,
-          [string]$extensionName,
-          [object]$endpoint)
+        [string]$vmName,
+        [string]$extensionName,
+        [object]$endpoint,
+        [string]$connectedServiceNameARM)
 
     Write-Verbose "Validating the winrm configuration custom script extension status"
 
@@ -1003,18 +1067,19 @@ function Validate-CustomScriptExecutionStatus
         else
         {
             $isScriptExecutionPassed = $false
-            $errMessage = "No custom script extension '$extensionName' exists"     
+            $errMessage = "No custom script extension '$extensionName' exists"
         }
     }
     catch
     {
         $isScriptExecutionPassed = $false
-        $errMessage = $_.Exception.Message  
+        $errMessage = $_.Exception.Message
     }
 
     if(-not $isScriptExecutionPassed)
     {
-        $response = Remove-AzureMachineCustomScriptExtension -resourceGroupName $resourceGroupName -vmName $vmName -name $extensionName -endpoint $endpoint
+        $response = Remove-AzureMachineCustomScriptExtension -resourceGroupName $resourceGroupName -vmName $vmName -name $extensionName `
+            -endpoint $endpoint -connectedServiceNameARM $connectedServiceNameARM
         throw (Get-VstsLocString -Key "AFC_SetCustomScriptExtensionFailed" -ArgumentList $extensionName, $vmName, $errMessage)
     }
 
@@ -1034,13 +1099,14 @@ function Is-WinRMCustomScriptExtensionExists
     try
     {
         $serviceEndpoint=Get-Endpoint $connectedServiceName
-        $customScriptExtension = Get-AzureMachineCustomScriptExtension -resourceGroupName $resourceGroupName -vmName $vmName -name $extensionName -endpoint $serviceEndpoint
+        $customScriptExtension = Get-AzureMachineCustomScriptExtension -resourceGroupName $resourceGroupName -vmName $vmName -name $extensionName `
+            -endpoint $serviceEndpoint -connectedServiceNameARM $connectedServiceName
 
         if($customScriptExtension)
         {
             if($customScriptExtension.ProvisioningState -ne "Succeeded")
-            {	
-                $removeExtension = $true  
+            {
+                $removeExtension = $true
             }
             else
             {
@@ -1061,28 +1127,30 @@ function Is-WinRMCustomScriptExtensionExists
     }
     catch
     {
-        $isExtensionExists = $false	
+        $isExtensionExists = $false
     }
 
     if($removeExtension)
     {
-        $response = Remove-AzureMachineCustomScriptExtension -resourceGroupName $resourceGroupName -vmName $vmName -name $extensionName -endpoint $serviceEndpoint
+        $response = Remove-AzureMachineCustomScriptExtension -resourceGroupName $resourceGroupName -vmName $vmName -name $extensionName `
+            -endpoint $serviceEndpoint -connectedServiceNameARM $connectedServiceName
 
         try
         {
-            $index = 1 
+            $index = 1
             $maxCount = 45   # Setting timeout for deleting extension as 15 mins.
 
             while($index -le $maxCount) {
                 Write-Verbose "Checking WinRM custom script extension status $index times"
 
-                $customScriptExtension = Get-AzureMachineCustomScriptExtension -resourceGroupName $resourceGroupName -vmName $vmName -name $extensionName -endpoint $serviceEndpoint
+                $customScriptExtension = Get-AzureMachineCustomScriptExtension -resourceGroupName $resourceGroupName -vmName $vmName -name $extensionName `
+                    -endpoint $serviceEndpoint -connectedServiceNameARM $connectedServiceName
 
-                if(-not $customScriptExtension -or $customScriptExtension.ProvisioningState -ne "deleting") 
+                if(-not $customScriptExtension -or $customScriptExtension.ProvisioningState -ne "deleting")
                 {
                     break
                 }
-               
+
                 start-sleep -s 20
                 $index = $index + 1
             }
@@ -1103,10 +1171,10 @@ function Is-WinRMCustomScriptExtensionExists
     $isExtensionExists
 }
 
-function Get-TargetUriFromFwdLink { 
+function Get-TargetUriFromFwdLink {
     param(
         [string]$fwdLink
-    )   
+    )
     Write-Verbose "Trying to get the target uri from the fwdLink: $fwdLink"
     $proxy = Get-VstsWebProxy
     Add-Type -AssemblyName System.Net.Http
@@ -1144,7 +1212,7 @@ function Add-WinRMHttpsNetworkSecurityRuleConfig
           [string]$ruleName,
           [string]$rulePriotity,
           [string]$winrmHttpsPort)
-    
+
     Write-Verbose "Trying to add a network security group rule"
 
     try
@@ -1187,13 +1255,14 @@ function Add-AzureVMCustomScriptExtension
     try
     {
         $endpoint = Get-Endpoint $connectedServiceName
-        $isExtensionExists = Is-WinRMCustomScriptExtensionExists -resourceGroupName $resourceGroupName -vmName $vmName -extensionName $extensionName -connectedServiceName $connectedServiceName
+        $isExtensionExists = Is-WinRMCustomScriptExtensionExists -resourceGroupName $resourceGroupName -vmName $vmName -extensionName $extensionName `
+            -connectedServiceName $connectedServiceName
         Write-Verbose -Verbose "IsExtensionExists: $isExtensionExists"
 
         if($isExtensionExists)
-        {            
+        {
             Add-WinRMHttpsNetworkSecurityRuleConfig -resourceGroupName $resourceGroupName -vmId $vmId -ruleName $ruleName -rulePriotity $rulePriotity -winrmHttpsPort $winrmHttpsPort
-            
+
             Write-Verbose "Skipping the addition of custom script extension '$extensionName' as it already exists"
             return
         }
@@ -1207,9 +1276,10 @@ function Add-AzureVMCustomScriptExtension
 
         if($result.Status -ne "Succeeded")
         {
-            Write-Telemetry "Task_InternalError" "ProvisionVmCustomScriptFailed"			
+            Write-Telemetry "Task_InternalError" "ProvisionVmCustomScriptFailed"
 
-            $response = Remove-AzureMachineCustomScriptExtension -resourceGroupName $resourceGroupName -vmName $vmName -name $extensionName -endpoint $endpoint
+            $response = Remove-AzureMachineCustomScriptExtension -resourceGroupName $resourceGroupName -vmName $vmName -name $extensionName `
+                -endpoint $endpoint -connectedServiceNameARM $connectedServiceName
             throw (Get-VstsLocString -Key "AFC_UnableToSetCustomScriptExtension" -ArgumentList $extensionName, $vmName, $result.Error.Message)
         }
 
@@ -1218,7 +1288,7 @@ function Add-AzureVMCustomScriptExtension
     }
     catch
     {
-         Write-Telemetry "Task_InternalError" "ExecutionOfVmCustomScriptFailed:$exceptionType"    
+         Write-Telemetry "Task_InternalError" "ExecutionOfVmCustomScriptFailed:$exceptionType"
          throw (Get-VstsLocString -Key "AFC_CopyPrereqsFailed" -ArgumentList $_.exception.message)
     }
 
@@ -1229,7 +1299,7 @@ function Check-ContainerNameAndArgs
 {
     param([string]$containerName,
           [string]$additionalArguments)
-    
+
     $additionalArguments = ' ' + $additionalArguments + ' '
     if($containerName -eq '$root' -and $additionalArguments -like '* /S *')
     {
@@ -1260,5 +1330,38 @@ function Get-InvokeRemoteScriptParameters
         credential = $psCredentials;
         protocol = $protocol;
         sessionOption = $sessionOption
+    }
+}
+
+function CleanUp-PSModulePathForHostedAgent {
+
+    # Define the module paths to clean up
+    $modulePaths = @(
+        "C:\Modules\azurerm_2.1.0",
+        "C:\\Modules\azurerm_2.1.0",
+        "C:\Modules\azure_2.1.0",
+        "C:\\Modules\azure_2.1.0"
+    )
+    
+    # Clean up PSModulePath for hosted agent
+    $newEnvPSModulePath = $env:PSModulePath
+   
+    foreach ($modulePath in $modulePaths) {
+        if ($newEnvPSModulePath.split(";") -contains $modulePath) {
+            $newEnvPSModulePath = (($newEnvPSModulePath).Split(";") | ? { $_ -ne $modulePath }) -join ";"
+            Write-Verbose "$modulePath removed. Restart the prompt for the changes to take effect."
+        }
+        else {
+            Write-Verbose "$modulePath is not present in $newEnvPSModulePath"
+        }
+    }
+   
+    if (Test-Path "C:\Modules\az_*") {
+        $azPSModulePath = (Get-ChildItem "C:\Modules\az_*" -Directory `
+            | Sort-Object { [version]$_.Name.Split('_')[-1] } `
+            | Select-Object -Last 1).FullName
+
+        Write-Verbose "Found Az module path $azPSModulePath, will be used"
+        $env:PSModulePath = ($azPSModulePath + ";" + $newEnvPSModulePath).Trim(";")
     }
 }

@@ -1,7 +1,7 @@
 {
   "loc.friendlyName": "NuGet インストーラー",
-  "loc.helpMarkDown": "[詳細](https://go.microsoft.com/fwlink/?LinkID=613747)",
-  "loc.description": "不足している NuGet パッケージをインストールまたは復元します",
+  "loc.helpMarkDown": "[詳細情報](https://docs.microsoft.com/azure/devops/pipelines/tasks/package/nuget)",
+  "loc.description": "不足している NuGet パッケージをインストールまたは復元します。最新の機能には NuGetAuthenticate@0 タスクを使用します。",
   "loc.instanceNameFormat": "NuGet $(restoreMode) $(solution)",
   "loc.group.displayName.advanced": "詳細設定",
   "loc.input.label.solution": "ソリューションまたは packages.config へのパス",
@@ -42,5 +42,6 @@
   "loc.messages.NGCommon_RemovingSources": "NuGet.config での資格情報の設定準備",
   "loc.messages.NGCommon_AddingSources": "NuGet.config での資格証明の設定",
   "loc.messages.NGCommon_NoSourcesFoundInConfig": "%s の NuGet.config ファイルでパッケージ ソースが見つかりません",
-  "loc.messages.NGCommon_UnabletoDetectNuGetVersion": "不明な NuGet バージョンが選ばれました。"
+  "loc.messages.NGCommon_UnabletoDetectNuGetVersion": "不明な NuGet バージョンが選ばれました。",
+  "loc.messages.DeprecatedTask": "このタスクは非推奨です。NuGetCommand@2 の 'restore' または 'custom' オプションの使用に切り替えてください https://learn.microsoft.com/en-us/azure/devops/pipelines/tasks/reference/nuget-command-v2"
 }

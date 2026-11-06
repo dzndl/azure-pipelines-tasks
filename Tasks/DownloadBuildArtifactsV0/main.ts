@@ -10,7 +10,7 @@ import { BuildStatus, BuildResult, BuildQueryOrder, Build, BuildDefinitionRefere
 
 import * as models from 'artifact-engine/Models';
 import * as engine from 'artifact-engine/Engine';
-import * as webHandlers from 'artifact-engine/Providers/typed-rest-client/Handlers';
+import * as webHandlers from 'typed-rest-client/Handlers';
 import { IBaseHandlerConfig, IContainerHandlerConfig, IContainerHandlerZipConfig } from './DownloadHandlers/HandlerConfigs';
 
 import { DownloadHandlerContainer } from './DownloadHandlers/DownloadHandlerContainer';
@@ -18,6 +18,7 @@ import { DownloadHandlerContainerZip } from './DownloadHandlers/DownloadHandlerC
 import { DownloadHandlerFilePath } from './DownloadHandlers/DownloadHandlerFilePath';
 
 import { resolveParallelProcessingLimit } from './download_helper';
+import * as os from 'os';
 
 import { extractTarsIfPresent, cleanUpFolder } from './file_helper';
 
@@ -27,6 +28,12 @@ tl.setResourcePath(path.join(__dirname, 'task.json'));
 
 const area: string = 'DownloadBuildArtifacts';
 const DefaultParallelProcessingLimit: number = 8;
+
+enum ErrorDisplayMode {
+    ShowError = 0,
+    ShowWarning,
+    DoNotShowError,
+}
 
 function getDefaultProps() {
     var hostType = (tl.getVariable('SYSTEM.HOSTTYPE') || "").toLowerCase();
@@ -100,8 +107,9 @@ async function main(): Promise<void> {
         var accessToken: string = tl.getEndpointAuthorizationParameter('SYSTEMVSSCONNECTION', 'AccessToken', false);
         var credentialHandler: IRequestHandler = getHandlerFromToken(accessToken);
         var webApi: WebApi = new WebApi(endpointUrl, credentialHandler);
-        const retryLimitRequest: number  = parseInt(tl.getVariable('VSTS_HTTP_RETRY')) ? parseInt(tl.getVariable("VSTS_HTTP_RETRY")) : 4;
+        const retryLimitRequest: number = parseInt(tl.getVariable('VSTS_HTTP_RETRY')) ? parseInt(tl.getVariable("VSTS_HTTP_RETRY")) : 4;
         const retryLimitDownload: number = parseInt(tl.getInput('retryDownloadCount', false)) ? parseInt(tl.getInput('retryDownloadCount', false)) : 4;
+        const retryRedirectLimitDownload: number = parseInt(tl.getInput('retryRedirectDownloadCount', false)) ? parseInt(tl.getInput('retryRedirectDownloadCount', false)) : 1;
 
         var templatePath: string = path.join(__dirname, 'vsts.handlebars.txt');
         var buildApi: IBuildApi = await executeWithRetries("getBuildApi", () => webApi.getBuildApi(), retryLimitRequest).catch((reason) => {
@@ -178,7 +186,7 @@ async function main(): Promise<void> {
                 }
 
                 definitionId = String(definitions[0].id);
-                console.log(tl.loc("DefinitionNameMatchFound", definitionIdSpecified, definitionId));
+                tl.writeExternalOutput(tl.loc("DefinitionNameMatchFound", definitionIdSpecified, definitionId) + os.EOL, { source: 'repository' });
             }
 
             if (!definitionId) {
@@ -215,7 +223,7 @@ async function main(): Promise<void> {
             }
 
             if (!build) {
-                build = await executeWithRetries("getBuild", () => buildApi.getBuild(buildId, projectId), retryLimitRequest).catch((reason) => {
+                build = await executeWithRetries("getBuild", () => buildApi.getBuild(projectId, buildId), retryLimitRequest).catch((reason) => {
                     reject(reason);
                     return;
                 });
@@ -241,7 +249,16 @@ async function main(): Promise<void> {
         // populate itempattern and artifacts based on downloadType
         if (downloadType === 'single') {
             var artifactName = tl.getInput("artifactName", true);
-            var artifact = await executeWithRetries("getArtifact", () => buildApi.getArtifact(buildId, artifactName, projectId), retryLimitRequest).catch((reason) => {
+
+            // if FF EnableBuildArtifactsPlusSignWorkaround is enabled or AZP_TASK_FF_ENABLE_BUILDARTIFACTS_PLUS_SIGN_WORKAROUND environment variable is set:
+            // replacing '+' symbol by its representation ' '(space) - workaround for the DownloadBuildArtifactV0 task,
+            // where downloading of part of artifact is not possible if there is a plus symbol
+            const enableBuildArtifactsPlusSignWorkaround = process.env.AZP_TASK_FF_ENABLE_BUILDARTIFACTS_PLUS_SIGN_WORKAROUND ? process.env.AZP_TASK_FF_ENABLE_BUILDARTIFACTS_PLUS_SIGN_WORKAROUND.toLowerCase() === "true" : false;
+
+            if (enableBuildArtifactsPlusSignWorkaround)
+                artifactName = artifactName.replace(/\+/g, ' ');
+
+            var artifact = await executeWithRetries("getArtifact", () => buildApi.getArtifact(projectId, buildId, artifactName), retryLimitRequest).catch((reason) => {
                 reject(reason);
                 return;
             });
@@ -254,7 +271,7 @@ async function main(): Promise<void> {
             artifacts.push(artifact);
         }
         else {
-            var buildArtifacts = await executeWithRetries("getArtifacts", () => buildApi.getArtifacts(buildId, projectId), retryLimitRequest).catch((reason) => {
+            var buildArtifacts = await executeWithRetries("getArtifacts", () => buildApi.getArtifacts(projectId, buildId), retryLimitRequest).catch((reason) => {
                 reject(reason);
             });
 
@@ -289,6 +306,8 @@ async function main(): Promise<void> {
                     var isPullRequestForkBool = isPullRequestFork ? isPullRequestFork.toLowerCase() == 'true' : false;
                     var isZipDownloadDisabled = tl.getVariable("SYSTEM.DisableZipDownload");
                     var isZipDownloadDisabledBool = isZipDownloadDisabled ? isZipDownloadDisabled.toLowerCase() != 'false' : false;
+                    var preferRedirectString = tl.getVariable("system.preferRedirectGetContainerItem");
+                    var preferRedirect = preferRedirectString ? preferRedirectString.toLowerCase() === 'true' : false;
 
                     // Disable zip download if selective itemPattern provided
                     if (downloaderOptions.itemPattern !== "**") {
@@ -315,19 +334,51 @@ async function main(): Promise<void> {
                     } else {
                         const operationName: string = `Download container - ${artifact.name}`;
 
-                        const handlerConfig: IContainerHandlerConfig = { ...config, endpointUrl, templatePath, handler };
-                        const downloadHandler: DownloadHandlerContainer = new DownloadHandlerContainer(handlerConfig);
-                        const downloadPromise: Promise<models.ArtifactDownloadTicket[]> = executeWithRetries(
-                            operationName,
-                            () => downloadHandler.downloadResources(),
-                            retryLimitDownload
-                        ).catch((reason) => {
-                            reject(reason);
-                            return;
-                        });
+                        if (!preferRedirect || retryRedirectLimitDownload < 0) {
+                            // Keep current logic exactly as-is, for complete safety do not refactor yet
+                            const handlerConfig: IContainerHandlerConfig = { ...config, endpointUrl, templatePath, handler, preferRedirect: false  };
+                            const downloadHandler: DownloadHandlerContainer = new DownloadHandlerContainer(handlerConfig);
+                            const downloadPromise: Promise<models.ArtifactDownloadTicket[]> = executeWithRetries(
+                                operationName,
+                                () => downloadHandler.downloadResources(),
+                                retryLimitDownload,
+                                ErrorDisplayMode.DoNotShowError
+                            ).catch((reason) => {
+                                reject(reason);
+                                return;
+                            });
 
-                        downloadPromises.push(downloadPromise);
-                        await downloadPromise;
+                            downloadPromises.push(downloadPromise);
+                            await downloadPromise;
+                        } else {
+                            var redirectTemplatePath: string = path.join(__dirname, 'vsts.redirect.handlebars.txt');
+                            // In this new flow, attempt to download through following the redirect but fall back to downloading from TFS if this fails.
+                            const downloaderOptions: engine.ArtifactEngineOptions = configureDownloaderOptions(retryRedirectLimitDownload);
+                            const handlerConfig: IContainerHandlerConfig = { ...config, downloaderOptions, endpointUrl, templatePath: redirectTemplatePath, handler, preferRedirect: true };
+                            const downloadHandler: DownloadHandlerContainer = new DownloadHandlerContainer(handlerConfig);
+                            const downloadPromise: Promise<models.ArtifactDownloadTicket[]> = executeWithRetries(
+                                operationName,
+                                () => downloadHandler.downloadResources(),
+                                retryRedirectLimitDownload,
+                                ErrorDisplayMode.ShowWarning
+                            ).catch((reason) => {
+                                tl.writeExternalOutput(tl.loc("FollowingDownloadRedirectFailed", reason) + os.EOL, { source: 'remote' });
+                                publishEvent('download-redirect', { "redirectLimit": retryRedirectLimitDownload, "err": JSON.stringify(reason, Object.getOwnPropertyNames(reason)) });
+                                const handlerConfig: IContainerHandlerConfig = { ...config, endpointUrl, templatePath, handler, preferRedirect: false  };
+                                const downloadHandler: DownloadHandlerContainer = new DownloadHandlerContainer(handlerConfig);
+                                const fallbackDownloadPromise: Promise<models.ArtifactDownloadTicket[]> = executeWithRetries(
+                                    operationName,
+                                    () => downloadHandler.downloadResources(),
+                                    retryLimitDownload
+                                ).catch((reason) => {
+                                    reject(reason);
+                                    return;
+                                });
+                                return fallbackDownloadPromise; // fall back to the original one
+                            });
+                            downloadPromises.push(downloadPromise);
+                            await downloadPromise;
+                        }
                     }
                 } else if (artifact.resource.type.toLowerCase() === "filepath") {
                     const operationName: string = `Download by FilePath - ${artifact.name}`;
@@ -345,12 +396,12 @@ async function main(): Promise<void> {
                     downloadPromises.push(downloadPromise);
                     await downloadPromise;
                 } else {
-                    console.log(tl.loc("UnsupportedArtifactType", artifact.resource.type));
+                    tl.writeExternalOutput(tl.loc("UnsupportedArtifactType", artifact.resource.type) + os.EOL, { source: 'remote' });
                 }
             });
 
             Promise.all(downloadPromises).then((tickets: models.ArtifactDownloadTicket[][]) => {
-                console.log(tl.loc('ArtifactsSuccessfullyDownloaded', downloadPath));
+                tl.writeExternalOutput(tl.loc('ArtifactsSuccessfullyDownloaded', downloadPath) + os.EOL, { source: 'repository' });
 
                 if (shouldExtractTars) {
                     extractTarsIfPresent(tickets, downloadPath);
@@ -365,26 +416,31 @@ async function main(): Promise<void> {
     return promise;
 }
 
-function executeWithRetries(operationName: string, operation: () => Promise<any>, retryCount): Promise<any> {
+function executeWithRetries(operationName: string, operation: () => Promise<any>, retryCount, errorDisplayMode: ErrorDisplayMode = ErrorDisplayMode.ShowError): Promise<any> {
     var executePromise = new Promise((resolve, reject) => {
-        executeWithRetriesImplementation(operationName, operation, retryCount, resolve, reject, retryCount);
+        executeWithRetriesImplementation(operationName, operation, retryCount, resolve, reject, retryCount, errorDisplayMode);
     });
 
     return executePromise;
 }
 
-function executeWithRetriesImplementation(operationName: string, operation: () => Promise<any>, currentRetryCount, resolve, reject, retryCountLimit) {
+function executeWithRetriesImplementation(operationName: string, operation: () => Promise<any>, currentRetryCount, resolve, reject, retryCountLimit, errorDisplayMode: ErrorDisplayMode) {
     operation().then((result) => {
         resolve(result);
     }).catch((error) => {
         if (currentRetryCount <= 0) {
-            tl.error(tl.loc("OperationFailed", operationName, error));
+            if (errorDisplayMode == ErrorDisplayMode.ShowError) {
+                tl.error(tl.loc("OperationFailed", operationName, error));
+            }
+            else if (errorDisplayMode == ErrorDisplayMode.ShowWarning) {
+                tl.warning(tl.loc("OperationFailed", operationName, error));
+            }
             reject(error);
         }
         else {
-            console.log(tl.loc('RetryingOperation', operationName, currentRetryCount));
+            tl.writeExternalOutput(tl.loc('RetryingOperation', operationName, currentRetryCount) + os.EOL, { source: 'remote' });
             currentRetryCount = currentRetryCount - 1;
-            setTimeout(() => executeWithRetriesImplementation(operationName, operation, currentRetryCount, resolve, reject, retryCountLimit), getRetryIntervalInSeconds(retryCountLimit - currentRetryCount) * 1000);
+            setTimeout(() => executeWithRetriesImplementation(operationName, operation, currentRetryCount, resolve, reject, retryCountLimit, errorDisplayMode), getRetryIntervalInSeconds(retryCountLimit - currentRetryCount) * 1000);
         }
     });
 }
@@ -393,10 +449,10 @@ function getRetryIntervalInSeconds(retryCount: number): number {
     let MaxRetryLimitInSeconds = 360;
     let baseRetryIntervalInSeconds = 5;
     var exponentialBackOff = baseRetryIntervalInSeconds * Math.pow(3, (retryCount + 1));
-    return exponentialBackOff < MaxRetryLimitInSeconds ? exponentialBackOff : MaxRetryLimitInSeconds ;
+    return exponentialBackOff < MaxRetryLimitInSeconds ? exponentialBackOff : MaxRetryLimitInSeconds;
 }
 
-function configureDownloaderOptions(): engine.ArtifactEngineOptions {
+function configureDownloaderOptions(maxRetries?: number): engine.ArtifactEngineOptions {
     const downloaderOptions: engine.ArtifactEngineOptions = new engine.ArtifactEngineOptions();
 
     const debugMode: string = tl.getVariable('System.Debug');
@@ -405,8 +461,11 @@ function configureDownloaderOptions(): engine.ArtifactEngineOptions {
     const artifactDownloadLimit: string = tl.getVariable('release.artifact.download.parallellimit');
     const taskInputParallelLimit: string = tl.getInput('parallelizationLimit', false);
     downloaderOptions.parallelProcessingLimit = resolveParallelProcessingLimit(artifactDownloadLimit, taskInputParallelLimit, DefaultParallelProcessingLimit);
-
     downloaderOptions.itemPattern = tl.getInput('itemPattern', false) || '**';
+
+    if (maxRetries !== undefined) {
+        downloaderOptions.retryLimit = maxRetries;
+    }
 
     return downloaderOptions;
 }

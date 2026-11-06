@@ -1,32 +1,41 @@
 import tl = require('azure-pipelines-task-lib/task');
-import fs = require('fs');
-import path = require('path');
-import { TaskParameters } from './TaskParameters';
-import { WebDeployArguments, WebDeployResult } from 'azure-pipelines-tasks-webdeployment-common/msdeployutility';
+
+import { WebDeployArguments, WebDeployResult, shouldUseMSDeployTokenAuth, installedMSDeployVersionSupportsTokenAuth } from 'azure-pipelines-tasks-webdeployment-common/msdeployutility';
 import {  executeWebDeploy } from 'azure-pipelines-tasks-webdeployment-common/deployusingmsdeploy';
-import { Package } from 'azure-pipelines-tasks-webdeployment-common/packageUtility';
 import { copySetParamFileIfItExists } from 'azure-pipelines-tasks-webdeployment-common/utility';
+
+import { TaskParameters } from './TaskParameters';
 import { AzureAppServiceUtility } from './AzureAppServiceUtility';
+
 const DEFAULT_RETRY_COUNT = 3;
 
 export class WebDeployUtility {
-    public static async publishUsingWebDeploy(taskParameters: TaskParameters, webDeployArguments: WebDeployArguments, azureAppServiceUtility: AzureAppServiceUtility) {
-        var retryCountParam = tl.getVariable("appservice.msdeployretrycount");
-        var retryCount = (retryCountParam && !(isNaN(Number(retryCountParam)))) ? Number(retryCountParam): DEFAULT_RETRY_COUNT;
-        let webDeployResult: WebDeployResult;
-        while(retryCount > 0) {
-                webDeployResult= await executeWebDeploy(webDeployArguments, await azureAppServiceUtility.getWebDeployPublishingProfile());
-                if(!webDeployResult.isSuccess) {
-                    await WebDeployUtility.webDeployRecommendationForIssue(taskParameters, webDeployResult.errorCode, azureAppServiceUtility, false);
-                }
-                else {
-                    break;
-                }
 
-                retryCount -= 1;
+    private readonly _azureAppServiceUtility: AzureAppServiceUtility;
+
+    constructor(azureAppServiceUtility: AzureAppServiceUtility) {
+        this._azureAppServiceUtility = azureAppServiceUtility;
+    }
+
+    public async publishUsingWebDeploy(taskParameters: TaskParameters) {
+        const webDeployArguments = await this.constructWebDeployArguments(taskParameters);
+        const retryCountParam = tl.getVariable("appservice.msdeployretrycount");
+        let retryCount = (retryCountParam && !isNaN(Number(retryCountParam))) ? Number(retryCountParam) : DEFAULT_RETRY_COUNT;
+        let webDeployResult: WebDeployResult;
+
+        while (retryCount > 0) {
+            webDeployResult = await executeWebDeploy(webDeployArguments);
+            if (!webDeployResult.isSuccess) {
+                await this.webDeployRecommendationForIssue(taskParameters, webDeployResult.errorCode, false);
+            }
+            else {
+                break;
+            }
+
+            retryCount--;
         }
 
-        if(webDeployArguments.setParametersFile) {
+        if (webDeployArguments.setParametersFile) {
             try {
                 tl.rmRF(webDeployArguments.setParametersFile);
             }
@@ -36,39 +45,58 @@ export class WebDeployUtility {
             }
         }
 
-        if(!webDeployResult.isSuccess) {
-            await WebDeployUtility.webDeployRecommendationForIssue(taskParameters, webDeployResult.errorCode, azureAppServiceUtility, true);
+        if (!webDeployResult.isSuccess) {
+            await this.webDeployRecommendationForIssue(taskParameters, webDeployResult.errorCode, true);
             throw new Error(webDeployResult.error);
         }
     }
 
-    public static constructWebDeployArguments(taskParameters: TaskParameters, publishProfile: any): WebDeployArguments {
-        let webDeployArguments: any = {};
+    private async constructWebDeployArguments(taskParameters: TaskParameters): Promise<WebDeployArguments> {
+        const publishProfile = await this._azureAppServiceUtility.getWebDeployPublishingProfile();
+        const webDeployArguments = {} as WebDeployArguments;
+
+        if (await this._azureAppServiceUtility.isSitePublishingCredentialsEnabled()) {
+            tl.debug("Using Basic authentication.");
+            webDeployArguments.authType = "Basic";
+            webDeployArguments.userName = publishProfile.userName;
+            webDeployArguments.password = publishProfile.userPWD;
+        }
+        else if (!shouldUseMSDeployTokenAuth()) {
+            throw new Error(tl.loc("BasicAuthNotSupported"));
+        }
+        else if (await installedMSDeployVersionSupportsTokenAuth() === false) {
+            throw new Error(tl.loc("MSDeployNotSupportTokenAuth"));
+        }
+        else {
+            tl.debug("Basic authentication is disabled, using token based authentication.");
+            webDeployArguments.authType = "Bearer";
+            webDeployArguments.password = await this._azureAppServiceUtility.getAuthToken();
+            webDeployArguments.userName = "user"; // arbitrary but not empty
+        } 
+
+        webDeployArguments.publishUrl = publishProfile.publishUrl;
         webDeployArguments.package = taskParameters.Package;
         webDeployArguments.additionalArguments = taskParameters.AdditionalArguments;
         webDeployArguments.appName = taskParameters.WebAppName;
         webDeployArguments.excludeFilesFromAppDataFlag = taskParameters.ExcludeFilesFromAppDataFlag;
-        webDeployArguments.publishUrl = publishProfile.publishUrl;
-        webDeployArguments.password = publishProfile.userPWD;
         webDeployArguments.removeAdditionalFilesFlag = taskParameters.RemoveAdditionalFilesFlag;
-        let setParametersFile = copySetParamFileIfItExists(taskParameters.SetParametersFile);
-        if(setParametersFile) {
+        webDeployArguments.takeAppOfflineFlag = taskParameters.TakeAppOfflineFlag;
+        webDeployArguments.useWebDeploy = taskParameters.UseWebDeploy;
+        webDeployArguments.virtualApplication = taskParameters.VirtualApplication;
+        
+        const setParametersFile = copySetParamFileIfItExists(taskParameters.SetParametersFile);
+        if (setParametersFile) {
             webDeployArguments.setParametersFile = setParametersFile.slice(setParametersFile.lastIndexOf('\\') + 1, setParametersFile.length);
         }
 
-        webDeployArguments.takeAppOfflineFlag = taskParameters.TakeAppOfflineFlag;
-        webDeployArguments.userName = publishProfile.userName;
-        webDeployArguments.useWebDeploy = taskParameters.UseWebDeploy;
-        webDeployArguments.virtualApplication = taskParameters.VirtualApplication;
-
-        return webDeployArguments as WebDeployArguments;
+        return webDeployArguments;
     }
 
-    public static async webDeployRecommendationForIssue(taskParameters: TaskParameters, errorCode: string, azureAppServiceUtility: AzureAppServiceUtility, isRecommendation: boolean) {
+    private async webDeployRecommendationForIssue(taskParameters: TaskParameters, errorCode: string, isRecommendation: boolean) {
         switch(errorCode) {
             case 'ERROR_CONNECTION_TERMINATED': {
                 if(!isRecommendation) {
-                    await azureAppServiceUtility.pingApplication();
+                    await this._azureAppServiceUtility.pingApplication();
                 }
                 break;
             }
@@ -82,7 +110,7 @@ export class WebDeployUtility {
             }
             case 'FILE_IN_USE': {
                 if(!isRecommendation && taskParameters.RenameFilesFlag) {
-                    await azureAppServiceUtility.enableRenameLockedFiles();
+                    await this._azureAppServiceUtility.enableRenameLockedFiles();
                 }
                 else {
                     tl.warning(tl.loc("Trytodeploywebappagainwithrenamefileoptionselected"));

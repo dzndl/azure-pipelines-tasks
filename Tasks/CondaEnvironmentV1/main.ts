@@ -16,8 +16,20 @@ import { condaEnvironment } from './conda';
             cleanEnvironment: task.getBoolInput('cleanEnvironment')
         },
         getPlatform());
+        let shouldFail = task.getVariable('FAIL_DEPRECATED_BUILD_TASK');
+
+	    if (shouldFail != null && shouldFail.toLowerCase() === 'true') {
+	        throw new Error(task.loc("DeprecatedTask"));
+	    }
         task.setResult(task.TaskResult.Succeeded, "");
-    } catch (error) {
-        task.setResult(task.TaskResult.Failed, error.message);
+    } catch (err) {
+        if (err instanceof Error) {
+            task.error(err.message);
+            task.setResult(task.TaskResult.Failed, err.message);
+        }
+        else {
+            task.error(err + '');
+            task.setResult(task.TaskResult.Failed, err + '');
+        }
     }
 })();

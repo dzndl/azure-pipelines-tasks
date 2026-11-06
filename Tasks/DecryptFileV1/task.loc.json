@@ -17,8 +17,8 @@
   "author": "Microsoft Corporation",
   "version": {
     "Major": 1,
-    "Minor": 186,
-    "Patch": 0
+    "Minor": 281,
+    "Patch": 1
   },
   "minimumAgentVersion": "2.182.1",
   "groups": [
@@ -74,6 +74,18 @@
   ],
   "execution": {
     "Node10": {
+      "target": "decrypt.js",
+      "argumentFormat": ""
+    },
+    "Node16": {
+      "target": "decrypt.js",
+      "argumentFormat": ""
+    },
+    "Node20_1": {
+      "target": "decrypt.js",
+      "argumentFormat": ""
+    },
+    "Node24": {
       "target": "decrypt.js",
       "argumentFormat": ""
     }

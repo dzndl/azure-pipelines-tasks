@@ -2,28 +2,34 @@
 
 import path = require('path');
 import * as tl from "azure-pipelines-task-lib/task";
-import RegistryAuthenticationToken from "azure-pipelines-tasks-docker-common-v2/registryauthenticationprovider/registryauthenticationtoken";
-import ContainerConnection from "azure-pipelines-tasks-docker-common-v2/containerconnection";
-import { getDockerRegistryEndpointAuthenticationToken } from "azure-pipelines-tasks-docker-common-v2/registryauthenticationprovider/registryauthenticationtoken";
+import RegistryAuthenticationToken from "azure-pipelines-tasks-docker-common/registryauthenticationprovider/registryauthenticationtoken";
+import ContainerConnection from "azure-pipelines-tasks-docker-common/containerconnection";
+import { getDockerRegistryEndpointAuthenticationToken } from "azure-pipelines-tasks-docker-common/registryauthenticationprovider/registryauthenticationtoken";
 
 export async function dockerBuildAndPush() {
     let endpointId = tl.getInput("dockerRegistryServiceConnection");
-    let registryAuthenticationToken: RegistryAuthenticationToken = getDockerRegistryEndpointAuthenticationToken(endpointId);
+    let registryAuthenticationToken: RegistryAuthenticationToken = await getDockerRegistryEndpointAuthenticationToken(endpointId);
 
     // Connect to any specified container registry
     let connection = new ContainerConnection();
-    connection.open(null, registryAuthenticationToken, true, false);
 
-    /* tslint:disable:no-var-requires */
-    let commandImplementation = require("./dockerbuild");
-    await commandImplementation.runBuild(connection).then(() => {}).catch((error) => {
-        throw new Error(error.message);
-    });
+    try {
+        connection.open(null, registryAuthenticationToken, true, false);
 
-    if (tl.getInput("dockerRegistryServiceConnection")) {
-        commandImplementation = require("./dockerpush")
-        await commandImplementation.run(connection).then(() => {}).catch((error) => {
+        /* tslint:disable:no-var-requires */
+        let commandImplementation = require("./dockerbuild");
+        await commandImplementation.runBuild(connection).then(() => {}).catch((error) => {
             throw new Error(error.message);
         });
+
+        if (endpointId) {
+            commandImplementation = require("./dockerpush")
+            await commandImplementation.run(connection).then(() => {}).catch((error) => {
+                throw new Error(error.message);
+            });
+        }
+    }
+    finally {
+        try { connection.close(true); } catch (e) { tl.debug(`connection cleanup failed: ${e}`); }
     }
 }

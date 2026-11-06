@@ -1,6 +1,8 @@
 import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
+const fs = require('fs');
+var cpExec = require('child_process').execSync;
 
 let taskPath = path.join(__dirname, '..', 'main.js');
 let tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(taskPath);
@@ -16,6 +18,11 @@ tr.setInput("deploymentMode", "Complete");
 tr.setInput("enableDeploymentPrerequisites", "None");
 tr.setInput("csmParametersFile", process.env["csmParametersFile"]);
 tr.setInput("deploymentOutputs", !!process.env["deploymentOutputs"] ? process.env["deploymentOutputs"] : "");
+tr.setInput("useWithoutJSON", process.env["useWithoutJSON"] || "false");
+
+// The safe output variable format requires an agent that decodes percent escaping. Tests default
+// to a current agent and override this when they exercise the compatibility fallback.
+process.env["AGENT_VERSION"] = process.env["agentVersion"] || "3.245.0";
 
 process.env["ENDPOINT_AUTH_AzureRM"] = "{\"parameters\":{\"serviceprincipalid\":\"id\",\"serviceprincipalkey\":\"key\",\"tenantid\":\"tenant\"},\"scheme\":\"ServicePrincipal\"}";
 process.env["ENDPOINT_AUTH_PARAMETER_AzureRM_SERVICEPRINCIPALID"] = "id";
@@ -26,15 +33,81 @@ process.env["ENDPOINT_DATA_AzureRM_SUBSCRIPTIONNAME"] = "sName";
 process.env["ENDPOINT_URL_AzureRM"] = "https://management.azure.com/";
 process.env["ENDPOINT_DATA_AzureRM_ENVIRONMENTAUTHORITYURL"] = "https://login.windows.net/";
 process.env["ENDPOINT_DATA_AzureRM_ACTIVEDIRECTORYSERVICEENDPOINTRESOURCEID"] = "https://management.azure.com";
+process.env["ENDPOINT_AUTH_SCHEME_AzureRM"] = "serviceprincipal";
+process.env["ENDPOINT_AUTH_PARAMETER_AzureRM_AUTHENTICATIONTYPE"] = "key";
+const useResolvedAzureCliPath = process.env["TEST_USE_RESOLVED_AZURE_CLI_PATH_FEATURE_DISABLED"] !== "true";
+if (!useResolvedAzureCliPath) {
+    delete process.env["DISTRIBUTEDTASK_TASKS_USERESOLVEDAZURECLIPATHFORARMTEMPLATEDEPLOYMENT"];
+}
+else {
+    process.env["DISTRIBUTEDTASK_TASKS_USERESOLVEDAZURECLIPATHFORARMTEMPLATEDEPLOYMENT"] = "true";
+}
 
 var CSMJson = path.join(__dirname, "CSM.json");
+var CSMBicep = path.join(__dirname, "CSMwithBicep.bicep");
+var CSMBicepWithSpaceInPath = path.join(__dirname, "CSMwithBicep WithSpaceInPath.bicep");
+var CSMBicepParam = path.join(__dirname, "CSMwithBicep.bicepparam");
+var CSMBicepParamWithEnv = path.join(__dirname, "CSMwithBicep.prod.bicepparam");
+var CSMBicepWithWarning = path.join(__dirname, "CSMwithBicepWithWarning.bicep");
+var CSMBicepWithError = path.join(__dirname, "CSMwithBicepWithError.bicep");
 var CSMwithComments = path.join(__dirname, "CSMwithComments.json");
 var defaults = path.join(__dirname, "defaults.json");
 var faultyCSM = path.join(__dirname, "faultyCSM.json");
+var azureCliPath = path.join(__dirname, "mock_node_modules", "azure-cli", "az");
+var azureCliExecutable = useResolvedAzureCliPath ? azureCliPath : "az";
+var bicepbuildCmd = `${azureCliExecutable} bicep build --file "${path.join(__dirname, "CSMwithBicep.bicep")}"`;
+var bicepbuildwithspaceinpathCmd = `${azureCliExecutable} bicep build --file "${path.join(__dirname, "CSMwithBicep WithSpaceInPath.bicep")}"`;
+var bicepparambuildCmd = `${azureCliExecutable} bicep build-params --file "${path.join(__dirname, "CSMwithBicep.bicepparam")}" --outfile "${path.join(__dirname, "CSMwithBicep.parameters.json")}"`;
+var bicepparambuildwithenvironmentCmd = `${azureCliExecutable} bicep build-params --file "${path.join(__dirname, "CSMwithBicep.prod.bicepparam")}" --outfile "${path.join(__dirname, "CSMwithBicep.parameters.json")}"`;
+var bicepbuildwithWarning = `${azureCliExecutable} bicep build --file "${path.join(__dirname, "CSMwithBicepWithWarning.bicep")}"`;
+var azloginCommand = `az login --service-principal -u "id" --password="key" --tenant "tenant" --allow-no-subscriptions`;
+azloginCommand = azloginCommand.replace(/^az/, azureCliExecutable);
+var azaccountSet = `${azureCliExecutable} account set --subscription "sId"`;
+var azlogoutCommand = `${azureCliExecutable} account clear`
+var azVersion = `${azureCliExecutable} --version`
+var azVersionJson = `${azureCliExecutable} version`
+
+var exec = {}
+const successExec = {
+    "code": 0,
+    "stdout": "Executed Successfully"
+}
+const successAzExec = {
+    "code": 0,
+    "stdout": "azure-cli 2.66.0"
+}
+const successAzVersionJsonExec = {
+    "code": 0,
+    "stdout": JSON.stringify({"azure-cli": "2.66.0"})
+}
+exec[bicepbuildCmd] = successExec;
+exec[bicepbuildwithspaceinpathCmd] = successExec;
+exec[bicepparambuildCmd] = successExec;
+exec[bicepparambuildwithenvironmentCmd] = successExec;
+exec[bicepbuildwithWarning] = successExec;
+exec[azloginCommand] = successExec;
+exec[azaccountSet] = successExec;
+exec[azlogoutCommand] = successExec;
+exec[azVersion] = successAzExec;
+exec[azVersionJson] = successAzVersionJsonExec;
 
 let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
+    "which": {
+        "az": azureCliExecutable,
+        [azureCliExecutable]: azureCliExecutable
+    },
+    "checkPath": {
+        [azureCliExecutable]: true
+    },
+    exec,
     "findMatch": {
         "CSM.json": [CSMJson],
+        "CSMwithBicep.bicep": [CSMBicep],
+        "CSMwithBicep WithSpaceInPath.bicep": [CSMBicepWithSpaceInPath],
+        "CSMwithBicep.bicepparam": [CSMBicepParam],
+        "CSMwithBicep.prod.bicepparam": [CSMBicepParamWithEnv],
+        "CSMwithBicepWithWarning.bicep": [CSMBicepWithWarning],
+        "CSMwithBicepWithError.bicep": [CSMBicepWithError],
         "CSMwithComments.json": [CSMwithComments],
         "defaults.json": [defaults],
         "faultyCSM.json": [faultyCSM],
@@ -48,5 +121,20 @@ process.env["MOCK_NORMALIZE_SLASHES"] = "true";
 tr.setAnswers(a);
 
 tr.registerMock('azure-pipelines-task-lib/toolrunner', require('azure-pipelines-task-lib/mock-toolrunner'));
-tr.registerMock('azure-pipelines-tasks-azure-arm-rest-v2/azure-arm-resource', require('./mock_node_modules/azure-arm-resource'));
+tr.registerMock('azure-pipelines-tasks-azure-arm-rest/azure-arm-resource', require('./mock_node_modules/azure-arm-resource'));
+
+const fsClone = Object.assign({}, fs);
+fsClone.readFileSync = function(fileName: string): Buffer {
+    if (fileName.indexOf("CSMwithBicep.json") >= 0 || fileName.indexOf("CSMwithBicepWithWarning.json") >= 0 || fileName.indexOf("CSMwithBicep WithSpaceInPath.json") >= 0) {
+        const filePath = fileName.replace('.json', '.bicep');
+        cpExec(`az bicep build --file "${filePath}"`);
+    }
+    else if (fileName.indexOf("CSMwithBicep.parameters.json") >= 0) {
+        const filePath = fileName.replace('.parameters.json', '.bicepparam');
+        cpExec(`az bicep build-params --file "${filePath}" --outfile "${fileName}"`);
+    }
+    var buffer = fs.readFileSync(fileName);
+    return buffer;
+}
+tr.registerMock('fs', fsClone);
 tr.run();

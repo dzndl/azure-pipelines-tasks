@@ -6,12 +6,13 @@ import path = require('path');
 import * as commonCommandOptions from "./commoncommandoption";
 import * as helmutil from "./utils"
 
-import { AKSCluster, AKSClusterAccessProfile, AzureEndpoint } from 'azure-pipelines-tasks-azure-arm-rest-v2/azureModels';
-import { WebRequest, WebResponse, sendRequest } from 'utility-common-v2/restutilities';
-import { extractManifestsFromHelmOutput, getDeploymentMetadata, getManifestFileUrlsFromHelmOutput, getPublishDeploymentRequestUrl, isDeploymentEntity } from 'azure-pipelines-tasks-kubernetes-common-v2/image-metadata-helper';
+import { AKSCluster, AKSClusterAccessProfile, AzureEndpoint } from 'azure-pipelines-tasks-azure-arm-rest/azureModels';
+import { WebRequest, WebResponse, sendRequest } from 'azure-pipelines-tasks-utility-common/restutilities';
+import { extractManifestsFromHelmOutput, getDeploymentMetadata, getManifestFileUrlsFromHelmOutput, getPublishDeploymentRequestUrl, isDeploymentEntity } from 'azure-pipelines-tasks-kubernetes-common/image-metadata-helper';
 
-import { AzureAksService } from 'azure-pipelines-tasks-azure-arm-rest-v2/azure-arm-aks-service';
-import { AzureRMEndpoint } from 'azure-pipelines-tasks-azure-arm-rest-v2/azure-arm-endpoint';
+import { AzureAksService } from 'azure-pipelines-tasks-azure-arm-rest/azure-arm-aks-service';
+import { AzureRMEndpoint } from 'azure-pipelines-tasks-azure-arm-rest/azure-arm-endpoint';
+import { Kubelogin } from 'azure-pipelines-tasks-kubernetes-common/kubelogin';
 import helmcli from "./helmcli";
 import kubernetescli from "./kubernetescli"
 
@@ -21,7 +22,7 @@ import { fail } from 'assert';
 const environmentVariableMaximumSize = 32766;
 
 tl.setResourcePath(path.join(__dirname, '..', 'task.json'));
-tl.setResourcePath(path.join(__dirname, '../node_modules/azure-pipelines-tasks-azure-arm-rest-v2/module.json'));
+tl.setResourcePath(path.join(__dirname, '../node_modules/azure-pipelines-tasks-azure-arm-rest/module.json'));
 
 function getKubeConfigFilePath(): string {
     var userdir = helmutil.getTaskTempDir();
@@ -32,7 +33,7 @@ function getClusterType(): any {
     var connectionType = tl.getInput("connectionType", true);
     var endpoint = tl.getInput("azureSubscriptionEndpoint")
     if (connectionType === "Azure Resource Manager" && endpoint) {
-        return require("./clusters/armkubernetescluster")
+        return require("azure-pipelines-tasks-azure-arm-rest/aksUtility")
     }
 
     return require("./clusters/generickubernetescluster")
@@ -50,45 +51,74 @@ function isKubConfigLogoutRequired(command: string): boolean {
 
 // get kubeconfig file path
 async function getKubeConfigFile(): Promise<string> {
-    return getClusterType().getKubeConfig().then((config) => {
-        var configFilePath = getKubeConfigFilePath();
-        tl.debug(tl.loc("KubeConfigFilePath", configFilePath));
-        fs.writeFileSync(configFilePath, config);
-        fs.chmodSync(configFilePath, '600');
-        return configFilePath;
-    });
+    const connectionType = tl.getInput("connectionType", true)
+    const azureSubscriptionEndpoint : string = tl.getInput("azureSubscriptionEndpoint");
+    let result
+    if (connectionType === "Azure Resource Manager" && azureSubscriptionEndpoint) {
+        const clusterName : string = tl.getInput("kubernetesCluster", true);
+        const resourceGroup : string = tl.getInput("azureResourceGroup", true);
+        const useClusterAdmin: boolean = tl.getBoolInput('useClusterAdmin');
+        result = await getClusterType().getKubeConfig(azureSubscriptionEndpoint, resourceGroup, clusterName, useClusterAdmin)
+    } else {
+        result = await getClusterType().getKubeConfig()
+    }
+    let configFilePath = getKubeConfigFilePath();
+    tl.debug(tl.loc("KubeConfigFilePath", configFilePath));
+    fs.writeFileSync(configFilePath, result);
+    fs.chmodSync(configFilePath, '600');
+    return configFilePath;
 }
 
-function runHelmSaveCommand(helmCli: helmcli, kubectlCli: kubernetescli, failOnStderr: boolean): void {
-    if (!helmCli.isHelmV3()) {
+async function runHelmSaveCommand(helmCli: helmcli, kubectlCli: kubernetescli, failOnStderr: boolean): Promise<void> {
+    if (!helmCli.isHelmV3orHigher()) {
         //helm chart save and push commands are only supported in Helms v3  
         throw new Error(tl.loc("SaveSupportedInHelmsV3Only"));
     }
     process.env.HELM_EXPERIMENTAL_OCI="1";
-    runHelm(helmCli, "saveChart", kubectlCli, failOnStderr);
+    await runHelm(helmCli, "saveChart", kubectlCli, failOnStderr);
     helmCli.resetArguments();
     const chartRef = getHelmChartRef(tl.getVariable("helmOutput"));
     tl.setVariable("helmChartRef", chartRef);
-    runHelm(helmCli, "registry", kubectlCli, false);
+    await runHelm(helmCli, "registry", kubectlCli, false);
     helmCli.resetArguments();
-    runHelm(helmCli, "pushChart", kubectlCli, failOnStderr);
+    await runHelm(helmCli, "pushChart", kubectlCli, failOnStderr);
     helmCli.resetArguments();
-    runHelm(helmCli, "removeChart", kubectlCli, failOnStderr);
+    await runHelm(helmCli, "removeChart", kubectlCli, failOnStderr);
 }
 
 async function run() {
     var command = tl.getInput("command", true).toLowerCase();
+    var connectionType = tl.getInput("connectionType", true);
     var isKubConfigRequired = isKubConfigSetupRequired(command);
     var kubectlCli: kubernetescli;
-    if (isKubConfigRequired) {
-        var kubeconfigfilePath = command === "logout" ? tl.getVariable("KUBECONFIG") : await getKubeConfigFile();
+    var externalAuth = connectionType === "None" && (command === "install" || command === "upgrade");
+    if (externalAuth && !tl.getVariable("KUBECONFIG")) {
+        const kubeConfigPath = path.join(process.env.HOME, '.kube', 'config');
+        if (fs.existsSync(kubeConfigPath)) {
+            tl.setVariable("KUBECONFIG", kubeConfigPath);
+        } else {
+            tl.error("KUBECONFIG kube configuration file path must be set when connectionType is none and command is install or upgrade.");
+        }
+    }
+    if (isKubConfigRequired || externalAuth) {
+        var kubeconfigfilePath = (command === "logout" || externalAuth) ? tl.getVariable("KUBECONFIG") : await getKubeConfigFile();
         kubectlCli = new kubernetescli(kubeconfigfilePath);
         kubectlCli.login();
+    }
+  
+    const kubelogin = new Kubelogin(helmutil.getTaskTempDir());
+    if (kubelogin.isAvailable() && !externalAuth) {
+        tl.debug('Kubelogin is installed. Converting kubeconfig.');
+        const serviceConnection: string = tl.getInput('azureSubscriptionEndpoint', false);
+        try {
+            await kubelogin.login(serviceConnection);
+        } catch (err) {
+            tl.debug(tl.loc('KubeloginFailed', err));
+        }
     }
 
     var helmCli: helmcli = new helmcli();
     helmCli.login();
-    var connectionType = tl.getInput("connectionType", true);
     var telemetry = {
         connectionType: connectionType,
         command: command,
@@ -110,10 +140,10 @@ async function run() {
                 kubectlCli.unsetKubeConfigEnvVariable();
                 break;
             case "save":
-                runHelmSaveCommand(helmCli, kubectlCli, failOnStderr);
+                await runHelmSaveCommand(helmCli, kubectlCli, failOnStderr);
                 break;
             default:
-                runHelm(helmCli, command, kubectlCli, failOnStderr);
+                await runHelm(helmCli, command, kubectlCli, failOnStderr);
         }
     } catch (err) {
         // not throw error so that we can logout from helm and kubernetes
@@ -128,7 +158,7 @@ async function run() {
     }
 }
 
-function runHelm(helmCli: helmcli, command: string, kubectlCli: kubernetescli, failOnStderr: boolean) {
+async function runHelm(helmCli: helmcli, command: string, kubectlCli: kubernetescli, failOnStderr: boolean): Promise<void> {
     var helmCommandMap = {
         "init": "./helmcommands/helminit",
         "install": "./helmcommands/helminstall",
@@ -154,7 +184,7 @@ function runHelm(helmCli: helmcli, command: string, kubectlCli: kubernetescli, f
 
     // add arguments
     commonCommandOptions.addArguments(helmCli);
-    commandImplementation.addArguments(helmCli);
+    await commandImplementation.addArguments(helmCli);
 
     const execResult = helmCli.execHelmCommand();
     tl.setVariable('helmExitCode', execResult.code.toString());
@@ -202,7 +232,7 @@ function runHelm(helmCli: helmcli, command: string, kubectlCli: kubernetescli, f
             }
         }
         catch (e) {
-            tl.warning("Capturing deployment metadata failed with error: " + e);
+            tl.error("Capturing deployment metadata failed with error: " + e);
         }
     }
 }
@@ -247,6 +277,5 @@ function getHelmChartRef(helmOutput: string): string {
     const refIndex = helmOutput.indexOf(refMarker);
     const lineEndingIndex = helmOutput.indexOf("\n", refIndex);
     let helmRef = helmOutput.substring(refIndex + refMarker.length, lineEndingIndex);
-    helmRef.trim();
-    return helmRef;
+    return helmRef.trim();
 }

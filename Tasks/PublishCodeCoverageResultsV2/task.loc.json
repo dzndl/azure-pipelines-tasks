@@ -10,16 +10,17 @@
     "Build"
   ],
   "runsOn": [
-    "Agent"
+    "Agent",
+    "DeploymentGroup"
   ],
   "author": "Microsoft Corporation",
   "version": {
     "Major": 2,
-    "Minor": 159,
-    "Patch": 0
+    "Minor": 282,
+    "Patch": 1
   },
   "demands": [],
-  "minimumAgentVersion": "2.102.0",
+  "minimumAgentVersion": "2.144.0",
   "instanceNameFormat": "ms-resource:loc.instanceNameFormat",
   "inputs": [
     {
@@ -45,10 +46,30 @@
       "defaultValue": "false",
       "required": false,
       "helpMarkDown": "ms-resource:loc.input.help.failIfCoverageEmpty"
+    },
+    {
+      "name": "publishHtmlReport",
+      "type": "boolean",
+      "label": "ms-resource:loc.input.label.publishHtmlReport",
+      "defaultValue": "true",
+      "required": false,
+      "helpMarkDown": "ms-resource:loc.input.help.publishHtmlReport"
     }
   ],
   "execution": {
-    "Node": {
+    "Node10": {
+      "target": "publishcodecoverageresults.js",
+      "argumentFormat": ""
+    },
+    "Node16": {
+      "target": "publishcodecoverageresults.js",
+      "argumentFormat": ""
+    },
+    "Node20_1": {
+      "target": "publishcodecoverageresults.js",
+      "argumentFormat": ""
+    },
+    "Node24": {
       "target": "publishcodecoverageresults.js",
       "argumentFormat": ""
     }

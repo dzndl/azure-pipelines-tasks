@@ -7,8 +7,9 @@ import * as tl from "azure-pipelines-task-lib/task";
 import * as tr from "azure-pipelines-task-lib/toolrunner";
 import * as utils from "./utilities";
 import * as os from "os";
-import * as toolLib from 'vsts-task-tool-lib/tool';
+import * as toolLib from 'azure-pipelines-tool-lib/tool';
 
+import { Kubelogin } from 'azure-pipelines-tasks-kubernetes-common/kubelogin';
 export default class ClusterConnection {
     private kubectlPath: string;
     private kubeconfigFile: string;
@@ -24,7 +25,7 @@ export default class ClusterConnection {
 
     private loadClusterType(connectionType: string): any {
         if(connectionType === "Azure Resource Manager") {
-            return require("./clusters/armkubernetescluster");
+            return require("azure-pipelines-tasks-azure-arm-rest/aksUtility")
         }
         else {
             return require("./clusters/generickubernetescluster");
@@ -33,9 +34,15 @@ export default class ClusterConnection {
     
     // get kubeconfig file path
     private async getKubeConfig(connectionType): Promise<string> {
-        return this.loadClusterType(connectionType).getKubeConfig().then((config) => {
-            return config;
-        });
+        if (connectionType === "Azure Resource Manager") {
+            const clusterName : string = tl.getInput("kubernetesCluster", true);
+            const azureSubscriptionEndpoint : string = tl.getInput("azureSubscriptionEndpoint", true);
+            const resourceGroup : string = tl.getInput("azureResourceGroup", true);
+            const useClusterAdmin: boolean = tl.getBoolInput('useClusterAdmin');
+            return this.loadClusterType(connectionType).getKubeConfig(azureSubscriptionEndpoint, resourceGroup, clusterName, useClusterAdmin)
+        } else {
+            return this.loadClusterType(connectionType).getKubeConfig()
+        }
     }
 
     private async initialize(): Promise<void> {
@@ -64,7 +71,7 @@ export default class ClusterConnection {
             kubeconfig = await this.getKubeConfig(connectionType);
         }
 
-        return this.initialize().then(() => {
+        return this.initialize().then(async () => {
             if (kubeconfig)
             {
                 this.kubeconfigFile = path.join(this.userDir, "config");
@@ -72,6 +79,17 @@ export default class ClusterConnection {
             }
 
             process.env["KUBECONFIG"] = this.kubeconfigFile;
+
+            const kubelogin = new Kubelogin(this.userDir);
+            if (kubelogin.isAvailable()) {
+                tl.debug('Kubelogin is installed. Converting kubeconfig.');
+                const serviceConnection: string = tl.getInput('azureSubscriptionEndpoint', false);
+                try {
+                    await kubelogin.login(serviceConnection);
+                } catch (err) {
+                    tl.debug(tl.loc('KubeloginFailed', err));
+                }
+            }
          });
     }
 
@@ -112,12 +130,20 @@ export default class ClusterConnection {
             errlines.push(line);
         });
 
+        // Route untrusted kubectl output through task-lib's shared external-output filter so that
+        // Azure Pipelines logging-command markers (##vso[) in it are neutralized before display.
+        // Only applied when the output is echoed (not silent); the raw stdout events used to build
+        // KubectlOutput are preserved by task-lib.
+        if (!options || options.silent !== true) {
+            options = { ...(options || {}), externalOutput: { source: 'childProcess' } };
+        }
+
         tl.debug(tl.loc('CallToolRunnerExec'));
         
         let promise = command.exec(options)
         .fail(error => {
             tl.debug(tl.loc('ToolRunnerExecCallFailed', error));
-            errlines.forEach(line => tl.error(line));
+            errlines.forEach(line => tl.errorExternalOutput(line, { source: 'childProcess' }));
             throw error;
         })
         .then(() => {
@@ -133,7 +159,7 @@ export default class ClusterConnection {
         if( versionOrLocation === "location") {
             let pathToKubectl = tl.getPathInput("specifyLocation", true, true);
             try {
-                fs.chmodSync(pathToKubectl, "777");
+                fs.chmodSync(pathToKubectl, "755");
             } catch (ex) {
                 tl.debug(`Could not chmod ${pathToKubectl}, exception: ${JSON.stringify(ex)}`)
             }

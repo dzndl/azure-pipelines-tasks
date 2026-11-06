@@ -1,0 +1,76 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Microsoft/azure-pipelines-task-lib/master/tasks.schema.json",
+  "id": "5eeaaa81-40b2-4918-8fc7-e2dfc2318902",
+  "name": "KubeloginInstaller",
+  "friendlyName": "ms-resource:loc.friendlyName",
+  "description": "ms-resource:loc.description",
+  "helpMarkDown": "ms-resource:loc.helpMarkDown",
+  "helpUrl": "https://azure.github.io/kubelogin/index.html",
+  "category": "Tool",
+  "minimumAgentVersion": "2.144.0",
+  "visibility": [
+    "Build",
+    "Release"
+  ],
+  "author": "Microsoft Corporation",
+  "version": {
+    "Major": 0,
+    "Minor": 283,
+    "Patch": 0
+  },
+  "demands": [],
+  "satisfies": [
+    "Kubelogin"
+  ],
+  "instanceNameFormat": "ms-resource:loc.instanceNameFormat",
+  "inputs": [
+    {
+      "name": "kubeloginVersion",
+      "type": "string",
+      "label": "ms-resource:loc.input.label.kubeloginVersion",
+      "defaultValue": "latest",
+      "helpMarkDown": "ms-resource:loc.input.help.kubeloginVersion"
+    },
+    {
+      "name": "gitHubConnection",
+      "type": "connectedService:github:OAuth,OAuth2,PersonalAccessToken,InstallationToken,Token",
+      "label": "ms-resource:loc.input.label.gitHubConnection",
+      "defaultValue": "",
+      "required": false,
+      "helpMarkDown": "ms-resource:loc.input.help.gitHubConnection"
+    }
+  ],
+  "execution": {
+    "Node16": {
+      "target": "kubelogin.js"
+    },
+    "Node20_1": {
+      "target": "kubelogin.js",
+      "argumentFormat": ""
+    },
+    "Node24": {
+      "target": "kubelogin.js",
+      "argumentFormat": ""
+    }
+  },
+  "messages": {
+    "Err_ExtractionFailed": "ms-resource:loc.messages.Err_ExtractionFailed",
+    "Err_GithubApiRateLimitExceeded": "ms-resource:loc.messages.Err_GithubApiRateLimitExceeded",
+    "Err_LatestTagNotFound": "ms-resource:loc.messages.Err_LatestTagNotFound",
+    "Err_NotAValidSemverVersion": "ms-resource:loc.messages.Err_NotAValidSemverVersion",
+    "Err_VersionNotFound": "ms-resource:loc.messages.Err_VersionNotFound",
+    "Info_CachingTool": "ms-resource:loc.messages.Info_CachingTool",
+    "Info_DownloadingFailed": "ms-resource:loc.messages.Info_DownloadingFailed",
+    "Info_KubeloginDownloading": "ms-resource:loc.messages.Info_KubeloginDownloading",
+    "Info_KubeloginPlatform": "ms-resource:loc.messages.Info_KubeloginPlatform",
+    "Info_KubeloginRelease": "ms-resource:loc.messages.Info_KubeloginRelease",
+    "Info_KubeloginReleaseURL": "ms-resource:loc.messages.Info_KubeloginReleaseURL",
+    "Info_KubeloginVersion": "ms-resource:loc.messages.Info_KubeloginVersion",
+    "Info_ResolvedToolFromCache": "ms-resource:loc.messages.Info_ResolvedToolFromCache",
+    "Info_ToolDownloaded": "ms-resource:loc.messages.Info_ToolDownloaded",
+    "Info_UsingToolPath": "ms-resource:loc.messages.Info_UsingToolPath",
+    "Info_UsingVersion": "ms-resource:loc.messages.Info_UsingVersion",
+    "Info_VerifyKubeloginInstallation": "ms-resource:loc.messages.Info_VerifyKubeloginInstallation",
+    "SucceedMsg": "ms-resource:loc.messages.SucceedMsg"
+  }
+}

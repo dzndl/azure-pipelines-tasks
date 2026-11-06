@@ -4,6 +4,8 @@
   "description": "Azure App Service Settings",
   "main": "azurewebappsettings.js",
   "scripts": {
+    "build": "node ../../make.js build --task AzureAppServiceSettingsV1",
+    "serverBuild": "node ../../make.js serverBuild --task AzureAppServiceSettingsV1",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -18,15 +20,18 @@
   "homepage": "https://github.com/Microsoft/vsts-tasks#readme",
   "dependencies": {
     "@types/mocha": "^5.2.7",
-    "@types/node": "^10.17.0",
+    "@types/node": "^24.10.0",
     "@types/q": "1.0.7",
     "@types/uuid": "^8.3.0",
-    "azure-pipelines-tasks-azurermdeploycommon": "^2.1.1",
-    "moment": "2.21.0",
+    "agent-base": "^6.0.2",
+    "azure-devops-node-api": "^17.0.1",
+    "azure-pipelines-task-lib": "^5.280.3",
+    "azure-pipelines-tasks-azure-arm-rest": "^3.281.0",
+    "moment": "^2.29.4",
     "q": "1.4.1",
-    "xml2js": "0.4.13"
+    "xml2js": "^0.6.2"
   },
   "devDependencies": {
-    "typescript": "4.0.2"
+    "typescript": "^5.7.2"
   }
 }

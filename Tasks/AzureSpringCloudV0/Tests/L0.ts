@@ -1,5 +1,6 @@
 import fs = require('fs');
-import { AzureSpringCloudUnitTests } from './AzureSpringCloudUnitTests';
+import assert = require('assert');
+import { AzureSpringAppsUnitTests } from './AzureSpringAppsUnitTests';
 import { nock } from './mock_utils';
 import { CreateNamedDeploymentFailsDeploymentDoesNotAlreadyExist } from './CreateNamedDeploymentFailsDeploymentDoesNotAlreadyExist';
 import { CreateNamedDeploymentFailsWhenTwoDeploymentsExist } from './CreateNamedDeploymentFailsWhenTwoDeploymentsExist';
@@ -10,8 +11,12 @@ import { SetProductionUseStagingSucceeds } from './SetProductionUseStagingSuccee
 import { SetNamedDeploymentFailsWhenDeploymentDoesNotExist } from './SetNamedDeploymentFailsWhenDeploymentDoesNotExist';
 import { SetProductionNamedDeploymentSucceeds } from './SetProductionNamedDeploymentSucceeds';
 import { DeleteStagingDeploymentTest } from './DeleteStagingDeploymentTest';
+import { DeploymentToStagingSucceedsWithBuildService } from './DeploymentToStagingSucceedsWithBuildService';
+import { DeploymentFailsWhenBuilderNotExist } from './DeploymentFailsWhenBuilderNotExist';
+import { DeploymentCustomImageToStagingSucceeds } from './DeploymentCustomImageToStagingSucceeds'
+import { sanitizeForLoggingCommand } from '../sanitize';
 
-describe('Azure Spring Cloud deployment Suite', function () {
+describe('Azure Spring Apps deployment Suite', function () {
     afterEach(() => {
         nock.cleanAll();
     });
@@ -19,14 +24,21 @@ describe('Azure Spring Cloud deployment Suite', function () {
     this.timeout(900000);
 
     // /*************** Unit Tests ***************/
-    it('Azure Spring Cloud wrapper behaves according to expectations', AzureSpringCloudUnitTests.testDeploymentNameRetrieval);
-    it('Prevents a path traversal attack in the Azure Spring Cloud Resource ID', AzureSpringCloudUnitTests.testDeploymentNameRetrieval);
+    it('Azure Spring Apps wrapper behaves according to expectations', AzureSpringAppsUnitTests.testDeploymentNameRetrieval);
+    it('Prevents a path traversal attack in the Azure Spring Apps Resource ID', AzureSpringAppsUnitTests.testDeploymentNameRetrieval);
 
     /*************** Deployment tests ************/
     it('Correctly errors out when attempting to use staging deployment and no staging deployment exists', DeploymentFailsWithInsufficientDeployments.mochaTest);
     it('Correctly errors out when attempting to create a new deployment, and two deployments already exist.', CreateNamedDeploymentFailsWhenTwoDeploymentsExist.mochaTest);
     it('Correctly errors out deploying to a named deployment with "create new" disabled, and the named deployment does not exist', CreateNamedDeploymentFailsDeploymentDoesNotAlreadyExist.mochaTest);
     it('Correctly deploys to a current staging deployment', DeploymentToStagingSucceeds.mochaTest);
+
+    /*************** Deployment with build service tests ***************/
+    it('Correctly deploys to a current staging deployment with build service', DeploymentToStagingSucceedsWithBuildService.mochaTest);
+    it('Correctly errors out when the builder resource does not exist', DeploymentFailsWhenBuilderNotExist.mochaTest);
+
+    /*************** Deployment with Custom image ***************/
+    it('Correctly deploys custom image to a current staging deployment', DeploymentCustomImageToStagingSucceeds.mochaTest);
 
     /*************** Set Production Deployment tests ************/
     it('Correctly errors out when "Use Staging Deployment" is set but no such deployment exists', SetProductionUseStagingFailsWithNoStaging.mochaTest);
@@ -40,4 +52,42 @@ describe('Azure Spring Cloud deployment Suite', function () {
     it('Correctly deletes the staging deployment', DeleteStagingDeploymentTest.mochaTest);
 });
 
+describe('Azure Spring Apps log output security', function () {
+    it('neutralizes agent commands while preserving diagnostic text', function () {
+        const commandPrefix = '##' + 'vso[';
+        const input = `first line\n${commandPrefix}task.setvariable variable=NODE_OPTIONS]payload\nlast line`;
+        const sanitized = sanitizeForLoggingCommand(input);
+
+        assert.strictEqual(
+            sanitized,
+            `first line\n##_vso[task.setvariable variable=NODE_OPTIONS]payload\nlast line`
+        );
+        assert.strictEqual(sanitized.includes(commandPrefix), false);
+    });
+
+    it('neutralizes agent commands case-insensitively and globally', function () {
+        const lowerCasePrefix = '##' + 'vso[';
+        const upperCasePrefix = '##' + 'VSO[';
+        const sanitized = sanitizeForLoggingCommand(`${lowerCasePrefix}first]x ${upperCasePrefix}second]y`);
+
+        assert.strictEqual(sanitized, '##_vso[first]x ##_vso[second]y');
+        assert.strictEqual(sanitized.toLowerCase().includes(lowerCasePrefix), false);
+    });
+
+    it('restricts commands and settable variables in task metadata', function () {
+        const taskJson = require('../task.json');
+        const localizedTaskJson = require('../task.loc.json');
+        const expectedRestrictions = {
+            commands: {
+                mode: 'restricted'
+            },
+            settableVariables: {
+                allowed: ['testEndpoint']
+            }
+        };
+
+        assert.deepStrictEqual(taskJson.restrictions, expectedRestrictions);
+        assert.deepStrictEqual(localizedTaskJson.restrictions, expectedRestrictions);
+    });
+});
 

@@ -1,7 +1,6 @@
 "use strict";
 import * as path from 'path';
 import * as fs from "fs";
-import * as url from "url";
 
 import * as tl from 'azure-pipelines-task-lib/task';
 import * as toolLib from 'azure-pipelines-tool-lib/tool';
@@ -16,7 +15,7 @@ export class VersionInstaller {
             tl.exist(installationPath) || tl.mkdirP(installationPath);
         }
         catch (ex) {
-            throw tl.loc("UnableToAccessPath", installationPath, JSON.stringify(ex));
+            throw tl.loc("UnableToAccessPath", installationPath, ex.message);
         }
 
         this.packageType = packageType;
@@ -28,20 +27,24 @@ export class VersionInstaller {
      * @param downloadUrl The download url of the sdk / runtime.
      */
     public async downloadAndInstall(versionInfo: VersionInfo, downloadUrl: string): Promise<void> {
-        if (!versionInfo || !versionInfo.getVersion() || !downloadUrl || !url.parse(downloadUrl)) {
+        if (!versionInfo || !versionInfo.getVersion() || !downloadUrl || !this.isValidHttpUrl(downloadUrl)) {
             throw tl.loc("VersionCanNotBeDownloadedFromUrl", versionInfo, downloadUrl);
         }
         let version = versionInfo.getVersion();
 
         try {
             try {
-                var downloadPath = await toolLib.downloadTool(downloadUrl)
+                var downloadPath = await toolLib.downloadToolWithRetries(downloadUrl)
             }
             catch (ex) {
-                tl.warning(tl.loc("CouldNotDownload", downloadUrl, ex));
-                let fallBackUrl = `https://dotnetcli.azureedge.net/dotnet/${this.packageType === "runtime" ? "Runtime" : "Sdk"}/${version}/${downloadUrl.substring(downloadUrl.lastIndexOf('/') + 1)}`;
-                console.log("Using fallback url for download: " + fallBackUrl);
-                var downloadPath = await toolLib.downloadTool(fallBackUrl)
+                let feedFallbackUrl = "https://builds.dotnet.microsoft.com/dotnet";
+                try {
+                    tl.warning(tl.loc("CouldNotDownload", downloadUrl, ex));
+                    var downloadPath = await this.downloadFromFallbackUrl(feedFallbackUrl, this.packageType, version, downloadUrl);
+                } catch(ex) {
+                    tl.warning(tl.loc("CouldNotDownload", feedFallbackUrl, ex));
+                    var downloadPath = await this.downloadFromFallbackUrl("https://dotnetcli.azureedge.net/dotnet", this.packageType, version, downloadUrl);
+                }
             }
 
             // Extract
@@ -174,6 +177,25 @@ export class VersionInstaller {
         }
 
         throw tl.loc("FileNameNotCorrectCompleteFileName", name);
+    }
+
+    private async downloadFromFallbackUrl(fallBackUrl: string, packageType: string, version: string, downloadUrl: string) : Promise<string> {
+        let url = `${fallBackUrl}/${packageType === "runtime" ? "Runtime" : "Sdk"}/${version}/${downloadUrl.substring(downloadUrl.lastIndexOf('/') + 1)}`;
+        console.log("Using fallback url for download: " + url);
+        var downloadPath = await toolLib.downloadToolWithRetries(url)
+        return downloadPath;
+    }
+
+    private isValidHttpUrl(urlString: string): boolean {
+        if (!urlString || urlString.trim().length === 0) {
+            return false;
+        }
+        try {
+            const u = new URL(urlString);
+            return u.protocol === "http:" || u.protocol === "https:";
+        } catch {
+            return false;
+        }
     }
 
     private packageType: string;

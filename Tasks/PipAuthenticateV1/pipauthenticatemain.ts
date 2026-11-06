@@ -1,6 +1,10 @@
 import { getPackagingRouteUrl } from "azure-pipelines-tasks-artifacts-common/connectionDataUtils";
 import { ProtocolType } from "azure-pipelines-tasks-artifacts-common/protocols";
 import { getPackagingServiceConnections } from "azure-pipelines-tasks-artifacts-common/serviceConnectionUtils";
+#if WIF
+import { getFederatedWorkloadIdentityCredentialsForFeed } from "azure-pipelines-tasks-artifacts-common/EntraWifUserServiceConnectionUtils";
+#endif
+import { verifyAzureArtifactsFeedUrl } from "azure-pipelines-tasks-artifacts-common/feedUrlUtils";
 import { getProjectScopedFeed } from "azure-pipelines-tasks-artifacts-common/stringUtils";
 import { emitTelemetry } from "azure-pipelines-tasks-artifacts-common/telemetry";
 import { getSystemAccessToken } from "azure-pipelines-tasks-artifacts-common/webapi";
@@ -10,13 +14,43 @@ import * as utils from "./utilities";
 
 async function main(): Promise<void> {
     tl.setResourcePath(path.join(__dirname, "task.json"));
-    tl.setResourcePath(path.join(__dirname, "node_modules/azure-pipelines-tasks-artifacts-common/module.json"));
 
     let internalFeedSuccessCount: number = 0;
     let externalFeedSuccessCount: number = 0;
-    try {
-        let internalAndExternalEndpoints: string[] = [];
+    let federatedFeedAuthSuccessCount: number = 0;
 
+    try {
+#if WIF
+        const feedUrl = tl.getInput("feedUrl");
+        const entraWifServiceConnectionName = tl.getInput("workloadIdentityServiceConnection");
+
+        // If using feed Url and wif service connection, set the pip index url
+        if (feedUrl && entraWifServiceConnectionName)
+        {
+            tl.debug(tl.loc("Info_AddingFederatedFeedAuth", entraWifServiceConnectionName, feedUrl));
+            const credentials = await getFederatedWorkloadIdentityCredentialsForFeed(
+                entraWifServiceConnectionName,
+                feedUrl,
+                ProtocolType.PyPi);
+            if(credentials)
+            {
+                var indexUrl = utils.addCredentialsToUri(
+                    entraWifServiceConnectionName,
+                    credentials.accessToken,
+                    credentials.feedUrl.href);
+                tl.setVariable("PIP_INDEX_URL", indexUrl, false);
+                federatedFeedAuthSuccessCount++;
+                console.log(tl.loc("Info_SuccessAddingFederatedFeedAuth", feedUrl));
+            } 
+            else
+            {
+                throw new Error(tl.loc("FailedToGetServiceConnectionAuth", entraWifServiceConnectionName)); 
+            }
+            return;
+        }
+#endif
+
+        let internalAndExternalEndpoints: string[] = [];
         const feedList  = tl.getDelimitedInput("artifactFeeds", ",");
         const onlyAddExtraIndex = tl.getBoolInput("onlyAddExtraIndex");
 
@@ -37,7 +71,8 @@ async function main(): Promise<void> {
                     pypiSimpleApiLocationId,
                     feed.feedId,
                     feed.projectId);
-                const pipUri = utils.addCredentialsToUri("build", localAccessToken, feedUri);
+                const verifiedFeedUri = await verifyAzureArtifactsFeedUrl(feedUri, ProtocolType.PyPi);
+                const pipUri = utils.addCredentialsToUri("build", localAccessToken, verifiedFeedUri.href);
                 internalAndExternalEndpoints.push(pipUri);
             }
         }
@@ -80,6 +115,7 @@ async function main(): Promise<void> {
         emitTelemetry("Packaging", "PipAuthenticateV1", {
             "InternalFeedAuthCount": internalFeedSuccessCount,
             "ExternalFeedAuthCount": externalFeedSuccessCount,
+            "FederatedFeedAuthCount": federatedFeedAuthSuccessCount
         });
     }
 }

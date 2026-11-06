@@ -13,7 +13,7 @@
   "author": "Microsoft Corporation",
   "version": {
     "Major": 1,
-    "Minor": 181,
+    "Minor": 283,
     "Patch": 0
   },
   "demands": [],
@@ -148,6 +148,7 @@
         "login": "login",
         "logout": "logout",
         "logs": "logs",
+        "rollout": "rollout",
         "run": "run",
         "set": "set",
         "top": "top"
@@ -450,8 +451,16 @@
     }
   ],
   "execution": {
-    "Node10": {
+    "Node16": {
       "target": "src//kubernetes.js"
+    },
+    "Node20_1": {
+      "target": "src//kubernetes.js",
+      "argumentFormat": ""
+    },
+    "Node24": {
+      "target": "src//kubernetes.js",
+      "argumentFormat": ""
     }
   },
   "messages": {
@@ -472,6 +481,8 @@
     "DownloadStableVersionFailed": "ms-resource:loc.messages.DownloadStableVersionFailed",
     "UsingLatestStableVersion": "ms-resource:loc.messages.UsingLatestStableVersion",
     "NotAValidVersion": "ms-resource:loc.messages.NotAValidVersion",
+    "InvalidKubectlVersion": "ms-resource:loc.messages.InvalidKubectlVersion",
+    "InvalidStableKubectlVersion": "ms-resource:loc.messages.InvalidStableKubectlVersion",
     "ConfigurationFileNotFound": "ms-resource:loc.messages.ConfigurationFileNotFound",
     "KubernetesServiceConnectionNotFound": "ms-resource:loc.messages.KubernetesServiceConnectionNotFound",
     "OutputVariableDataSizeExceeded": "ms-resource:loc.messages.OutputVariableDataSizeExceeded",
@@ -485,6 +496,7 @@
     "UnableToFetchKubectlVersion": "ms-resource:loc.messages.UnableToFetchKubectlVersion",
     "KubectlClientVersion": "ms-resource:loc.messages.KubectlClientVersion",
     "KubectlServerVersion": "ms-resource:loc.messages.KubectlServerVersion",
-    "KubectlServerVerisonNotFound": "ms-resource:loc.messages.KubectlServerVerisonNotFound"
+    "KubectlServerVerisonNotFound": "ms-resource:loc.messages.KubectlServerVerisonNotFound",
+    "KubeloginFailed": "ms-resource:loc.messages.KubeloginFailed"
   }
 }

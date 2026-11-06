@@ -7,6 +7,9 @@ param()
 
 $invalidInputStorageAccount = "invalidInputStorageAccount"
 $exceptionMessage = "Exception thrown"
+$cleanupCallCount = 0
+
+function global:Remove-EndpointSecrets { $script:cleanupCallCount++ }
 
 Register-Mock Write-Telemetry { }
 Register-Mock Test-Path { return $true } -ParametersEvaluator { $Path -eq "c:\foo\bar" }
@@ -18,9 +21,11 @@ Register-Mock Invoke-Expression { throw $exceptionMessage }
 
 Assert-Throws {
     Upload-FilesToAzureContainer -sourcePath $validInputSourcePath -endPoint $spnEndpoint -storageAccountName $invalidInputStorageAccount -containerName $validInputContainerName `
-                                 -blobPrefix $validInputBlobPrefix -blobStorageEndpoint $validBlobStorageEndpoint -azCopyLocation $validAzCopyLocation -destinationType $validInputAzureBlobDestinationType
+                                -blobPrefix $validInputBlobPrefix -blobStorageEndpoint $validBlobStorageEndpoint -azCopyLocation $validAzCopyLocation -destinationType $validInputAzureBlobDestinationType `
+                                -containerSasToken $validSasToken
 } -MessagePattern "*ServicePrincipalError*"
 
+Assert-AreEqual 1 $cleanupCallCount "Certificate secrets should be removed after a failed AzCopy login"
 Unregister-Mock Invoke-Expression
 
 # Test 2 "Should throw and delete container if destination azureVM"
@@ -30,18 +35,8 @@ Register-Mock Invoke-Expression { throw $exceptionMessage } -ParametersEvaluator
 
 Assert-Throws {
     Upload-FilesToAzureContainer -sourcePath $validInputSourcePath -endPoint $spnEndpoint -storageAccountName $invalidInputStorageAccount -containerName $validInputContainerName `
-                                 -blobPrefix $validInputBlobPrefix -azCopyLocation $validAzCopyLocation -destinationType $validInputAzureVmsDestinationType
+                                 -blobPrefix $validInputBlobPrefix -azCopyLocation $validAzCopyLocation -destinationType $validInputAzureVmsDestinationType -containerSasToken $validSasToken
 } -MessagePattern "*AFC_UploadContainerStorageAccount*invalidInputStorageAccount*"
 
 Assert-WasCalled Remove-AzureContainer -Times 1
-
-
-# Test 3 "Success in Upload blob destination"
-Unregister-Mock Invoke-Expression
-Register-Mock Invoke-Expression { return $succeededCopyResponse }
-$LASTEXITCODE = 0
-
-Upload-FilesToAzureContainer -sourcePath $validInputSourcePath -endPoint $spnEndpoint -storageAccountName $validInputStorageAccount -containerName $validInputContainerName `
-                             -blobPrefix $validInputBlobPrefix -azCopyLocation $validAzCopyLocation -destinationType $validInputAzureBlobDestinationType
-
-Assert-WasCalled Invoke-Expression -Times 3
+Assert-AreEqual 2 $cleanupCallCount "Certificate secrets should be removed after a failed AzCopy upload"

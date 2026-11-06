@@ -1,7 +1,7 @@
 {
-  "loc.friendlyName": "Shell script",
-  "loc.helpMarkDown": "[Learn more about this task](https://go.microsoft.com/fwlink/?LinkID=613738)",
-  "loc.description": "Run a shell script using Bash",
+  "loc.friendlyName": "Shellskript",
+  "loc.helpMarkDown": "[Weitere Informationen zu dieser Aufgabe](https://go.microsoft.com/fwlink/?LinkID=613738)",
+  "loc.description": "Shellskript mithilfe von Bash ausführen",
   "loc.instanceNameFormat": "Shellskript $(scriptPath)",
   "loc.group.displayName.advanced": "Erweitert",
   "loc.input.label.scriptPath": "Skriptpfad",
@@ -15,5 +15,6 @@
   "loc.input.label.failOnStandardError": "Fehler bei Standardfehler.",
   "loc.input.help.failOnStandardError": "Wenn dies wahr ist, tritt ein Aufgabenfehler auf, wenn Fehler in den StandardError-Stream geschrieben werden.",
   "loc.messages.BashReturnCode": "Bash wurde mit dem folgenden Rückgabecode beendet: %d",
-  "loc.messages.BashFailed": "Bash-Fehler: %s"
+  "loc.messages.BashFailed": "Bash-Fehler: %s",
+  "loc.messages.BashFailedWithCode137": "Bash wurde mit Code 137 beendet, was bedeutet, dass nicht genügend Arbeitsspeicher verfügbar war. Stellen Sie sicher, dass für den Agenthost (Containerhost) ausreichend Arbeitsspeicher konfiguriert ist."
 }

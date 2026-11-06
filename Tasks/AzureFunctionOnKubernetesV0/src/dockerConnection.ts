@@ -1,17 +1,17 @@
 import * as url from "url";
 import * as tl from 'azure-pipelines-task-lib/task';
-import * as ImageUtils from "azure-pipelines-tasks-docker-common-v2/containerimageutils";
-import ContainerConnection from "azure-pipelines-tasks-docker-common-v2/containerconnection";
-import RegistryAuthenticationToken from "azure-pipelines-tasks-docker-common-v2/registryauthenticationprovider/registryauthenticationtoken";
-import { getDockerRegistryEndpointAuthenticationToken } from "azure-pipelines-tasks-docker-common-v2/registryauthenticationprovider/registryauthenticationtoken";
+import * as ImageUtils from "azure-pipelines-tasks-docker-common/containerimageutils";
+import ContainerConnection from "azure-pipelines-tasks-docker-common/containerconnection";
+import RegistryAuthenticationToken from "azure-pipelines-tasks-docker-common/registryauthenticationprovider/registryauthenticationtoken";
+import { getDockerRegistryEndpointAuthenticationToken } from "azure-pipelines-tasks-docker-common/registryauthenticationprovider/registryauthenticationtoken";
 
 export class DockerConnection {
     private connection: ContainerConnection;
     private registryAuthenticationToken: RegistryAuthenticationToken;
 
-    public open() {      
+    public async open() {      
         const endpointId = tl.getInput("dockerRegistryServiceConnection", true);
-        this.registryAuthenticationToken = getDockerRegistryEndpointAuthenticationToken(endpointId);        
+        this.registryAuthenticationToken = await getDockerRegistryEndpointAuthenticationToken(endpointId);        
         this.connection = new ContainerConnection();
         this.connection.open(null, this.registryAuthenticationToken);
     }

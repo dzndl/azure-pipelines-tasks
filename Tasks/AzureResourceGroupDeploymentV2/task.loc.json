@@ -14,8 +14,8 @@
   "author": "Microsoft Corporation",
   "version": {
     "Major": 2,
-    "Minor": 192,
-    "Patch": 1
+    "Minor": 283,
+    "Patch": 0
   },
   "demands": [],
   "minimumAgentVersion": "2.119.1",
@@ -306,6 +306,15 @@
       "required": false,
       "helpMarkDown": "ms-resource:loc.input.help.addSpnToEnvironment",
       "groupName": "Advanced"
+    },
+    {
+      "name": "useWithoutJSON",
+      "type": "boolean",
+      "label": "ms-resource:loc.input.label.useWithoutJSON",
+      "defaultValue": "false",
+      "required": false,
+      "helpMarkDown": "ms-resource:loc.input.help.useWithoutJSON",
+      "groupName": "Advanced"
     }
   ],
   "dataSourceBindings": [
@@ -337,8 +346,17 @@
   ],
   "instanceNameFormat": "ms-resource:loc.instanceNameFormat",
   "execution": {
-    "Node10": {
-      "target": "main.js"
+    "Node16": {
+      "target": "main.js",
+      "argumentFormat": ""
+    },
+    "Node20_1": {
+      "target": "main.js",
+      "argumentFormat": ""
+    },
+    "Node24": {
+      "target": "main.js",
+      "argumentFormat": ""
     }
   },
   "messages": {
@@ -465,6 +483,7 @@
     "ListingOfExtensionsFailed": "ms-resource:loc.messages.ListingOfExtensionsFailed",
     "ExtensionNotFound": "ms-resource:loc.messages.ExtensionNotFound",
     "AddedOutputVariable": "ms-resource:loc.messages.AddedOutputVariable",
+    "OutputVariableNameChanged": "ms-resource:loc.messages.OutputVariableNameChanged",
     "UnableToFetchAuthorityURL": "ms-resource:loc.messages.UnableToFetchAuthorityURL",
     "UnableToFetchActiveDirectory": "ms-resource:loc.messages.UnableToFetchActiveDirectory",
     "SpecifiedAzureRmEndpointIsInvalid": "ms-resource:loc.messages.SpecifiedAzureRmEndpointIsInvalid",
@@ -486,6 +505,8 @@
     "TemplateValidationFailure": "ms-resource:loc.messages.TemplateValidationFailure",
     "ManagedServiceIdentityDetails": "ms-resource:loc.messages.ManagedServiceIdentityDetails",
     "DeploymentGroupConfigurationFailedOnVM": "ms-resource:loc.messages.DeploymentGroupConfigurationFailedOnVM",
-    "TroubleshootingGuide": "ms-resource:loc.messages.TroubleshootingGuide"
+    "TroubleshootingGuide": "ms-resource:loc.messages.TroubleshootingGuide",
+    "SafeOutputVariablesAgentTooOld": "ms-resource:loc.messages.SafeOutputVariablesAgentTooOld",
+    "SafeOutputVariablesPercentDecodingDisabled": "ms-resource:loc.messages.SafeOutputVariablesPercentDecodingDisabled"
   }
 }

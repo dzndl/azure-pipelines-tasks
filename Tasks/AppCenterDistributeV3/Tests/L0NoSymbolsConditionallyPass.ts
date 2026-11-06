@@ -1,16 +1,17 @@
 
-import ma = require('vsts-task-lib/mock-answer');
-import tmrm = require('vsts-task-lib/mock-run');
+import ma = require('azure-pipelines-task-lib/mock-answer');
+import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 import fs = require('fs');
 import { basicSetup } from './UnitTests/TestHelpers';
 const Stats = require('fs').Stats;
-const mockery = require('mockery');
+const libMocker = require('azure-pipelines-task-lib/lib-mocker');
+const nock = require('nock');
 
 let taskPath = path.join(__dirname, '..', 'appcenterdistribute.js');
 let tmr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(taskPath);
 
-process.env['VSMOBILECENTERUPLOAD_CONTINUEIFSYMBOLSNOTFOUND']='true';
+process.env['VSMOBILECENTERUPLOAD_CONTINUEIFSYMBOLSNOTFOUND'] = 'true';
 
 tmr.setInput('serverEndpoint', 'MyTestEndpoint');
 tmr.setInput('appSlug', 'testuser/testapp');
@@ -22,6 +23,12 @@ tmr.setInput('dsymPath', '/test/path/to/symbols.dSYM');
 
 basicSetup();
 
+nock('https://example.test')
+    .post('/v0.1/apps/testuser/testapp/releases/1/groups', {
+        id: "00000000-0000-0000-0000-000000000000",
+        mandatory_update: false
+    }).reply(200);
+
 // provide answers for task mock
 let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
     "findMatch": {
@@ -32,7 +39,7 @@ let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
             "/test/path/to/symbols.dSYM"
         ]
     },
-    "checkPath" : {
+    "checkPath": {
         "./test.ipa": true
     },
     "exist": {
@@ -41,8 +48,9 @@ let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
 };
 
 tmr.setAnswers(a);
+const mockedFs = { ...fs };
 
-fs.statSync = (s) => {
+mockedFs.statSync = (s) => {
     let stat = new Stats;
     stat.isFile = () => {
         return true;
@@ -51,8 +59,8 @@ fs.statSync = (s) => {
     return stat;
 };
 
-tmr.registerMock('fs', fs);
+tmr.registerMock('fs', mockedFs);
 
 tmr.run();
 
-mockery.deregisterMock('fs', fs);
+libMocker.deregisterMock('fs');

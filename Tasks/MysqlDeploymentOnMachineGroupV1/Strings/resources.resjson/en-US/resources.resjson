@@ -13,7 +13,7 @@
   "loc.input.help.ServerName": "Server name of 'Database for MySQL'.Example: localhost. When you connect using MySQL Workbench, this is the same value that is used for 'Hostname' in 'Parameters'",
   "loc.input.label.DatabaseName": "Database Name",
   "loc.input.help.DatabaseName": "The name of database, if you already have one, on which the below script is needed to be run, else the script itself can be used to create the database.",
-  "loc.input.label.SqlUsername": "Mysql User Name",
+  "loc.input.label.SqlUsername": "MySQL User Name",
   "loc.input.help.SqlUsername": "When you connect using MySQL Workbench, this is the same value that is used for 'Username' in 'Parameters'.",
   "loc.input.label.SqlPassword": "Password",
   "loc.input.help.SqlPassword": "Password for MySQL Database.<br>It can be variable defined in the pipeline. Example : $(password).<br>Also, you may mark the variable type as 'secret' to secure it.",
@@ -28,9 +28,11 @@
   "loc.messages.MysqlTaskParameterCannotBeEmpty": "The MySQL task parameter cannot be null.",
   "loc.messages.ToolPathCannotBeNull": "Tool path cannot be null.",
   "loc.messages.SqlExecutionException": "A SQL execution exception occurred. Please check the SQL script. Error: %s .",
+  "loc.messages.InvalidSqlFilePath": "The SQL script file path contains unsupported characters (quotes, semicolons, or line breaks). Rename the file or use a different file pattern. Path: %s",
   "loc.messages.CallbackCannotBeNull": "The callback cannot be null.",
   "loc.messages.UnableToCreateDatabaseException": "Unable to create database.",
   "loc.messages.WindowMysqlClientMissingError": "MySQL client is missing on the Windows agent machine. Please install it by running the MySQL client installer 'https://aka.ms/window-mysqlcli-installer' script file on the agent machine.",
   "loc.messages.LinuxMysqlClientMissingError": "MySQL client is missing on the Linux agent machine. Please install it by running 'sudo apt-get install mysql-client'.",
-  "loc.messages.Nopackagefoundwithspecifiedpattern": "No package found with specified pattern"
+  "loc.messages.Nopackagefoundwithspecifiedpattern": "No package found with specified pattern",
+  "loc.messages.InvalidDatabaseName": "Invalid database name '%s'. Only alphanumeric characters, underscores, hyphens, and dollar signs are allowed."
 }

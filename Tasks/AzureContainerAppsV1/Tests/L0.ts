@@ -1,0 +1,699 @@
+import * as assert from'assert';
+import * as path from'path';
+import * as ttm from 'azure-pipelines-task-lib/mock-test';
+import { Done } from 'mocha';
+
+describe('AzureContainerAppsV1 Suite', function () {
+    this.timeout(60000);
+
+    function runValidations(validator: () => void, tr: ttm.MockTestRunner) {
+        try {
+            validator();
+        } catch (error) {
+            console.log('STDERR', tr.stderr);
+            console.log('STDOUT', tr.stdout);
+            throw error;
+        }
+    }
+
+    it('Fails for missing required arguments.', async () => {
+        this.timeout(5000);
+
+        const tp: string = path.join(__dirname, 'L0FailsForMissingRequiredArguments.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            // Validate the task failed
+            assert(tr.failed, 'AzureContainerAppsV1 task should have failed when none of the required arguments are provided.');
+
+            // Validate the correct error message was thrown
+            assert(tr.stdout.includes('MissingRequiredArgumentMessage'), 'AzureContainerAppsV1 task should have failed when none of the required arguments are provided.');
+
+            // Validate the correct result was logged to telemetry
+            assert(tr.stdout.includes('[MOCK] setFailedResult called'), 'AzureContainerAppsV1 task should signal to telemetry that the task failed.');
+
+            // Validate that the end-of-test scenarios are hit
+            assert(tr.stdout.includes('[MOCK] logoutAzure called'), 'AzureContainerAppsV1 task should try to logout of Azure at the end of the task.');
+            assert(tr.stdout.includes('[MOCK] logoutAcr called'), 'AzureContainerAppsV1 task should log Docker out of ACR at the end of the task to avoid leaving registry credentials on the agent.');
+            assert(tr.stdout.includes('[MOCK] sendLogs called'), 'AzureContainerAppsV1 task should send telemetry logs at the end of the task.');
+        }, tr);
+    });
+
+    it('Fails for appSourcePath provided without acrName', async () => {
+        this.timeout(5000);
+
+        const tp: string = path.join(__dirname, 'L0FailsForAppSourcePathWithoutAcrName.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            // Validate the task failed
+            assert(tr.failed, 'AzureContainerAppsV1 task should have failed when appSourcePath is provided without acrName.');
+
+            // Validate the correct error message was thrown
+            assert(tr.stdout.includes('MissingAcrNameMessage'), 'AzureContainerAppsV1 task should have failed when appSourcePath is provided without acrName.');
+
+            // Validate the correct result was logged to telemetry
+            assert(tr.stdout.includes('[MOCK] setFailedResult called'), 'AzureContainerAppsV1 task should signal to telemetry that the task failed.');
+
+            // Validate that the end-of-test scenarios are hit
+            assert(tr.stdout.includes('[MOCK] logoutAzure called'), 'AzureContainerAppsV1 task should try to logout of Azure at the end of the task.');
+            assert(tr.stdout.includes('[MOCK] logoutAcr called'), 'AzureContainerAppsV1 task should log Docker out of ACR at the end of the task to avoid leaving registry credentials on the agent.');
+            assert(tr.stdout.includes('[MOCK] sendLogs called'), 'AzureContainerAppsV1 task should send telemetry logs at the end of the task.');
+        }, tr);
+    });
+
+    it('Fails for appSourcePath containing shell metacharacters', async () => {
+        this.timeout(5000);
+
+        const tp: string = path.join(__dirname, 'L0FailsForAppSourcePathWithMetacharacters.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            // Validate the task failed
+            assert(tr.failed, 'AzureContainerAppsV1 task should have failed when appSourcePath contains shell metacharacters.');
+
+            // Validate the correct error message was thrown
+            assert(tr.stdout.includes('InvalidAppSourcePathMessage'), 'AzureContainerAppsV1 task should reject an appSourcePath that contains shell metacharacters to prevent command injection.');
+
+            // Validate the correct result was logged to telemetry
+            assert(tr.stdout.includes('[MOCK] setFailedResult called'), 'AzureContainerAppsV1 task should signal to telemetry that the task failed.');
+
+            // Validate that the end-of-test scenarios are hit
+            assert(tr.stdout.includes('[MOCK] logoutAzure called'), 'AzureContainerAppsV1 task should try to logout of Azure at the end of the task.');
+            assert(tr.stdout.includes('[MOCK] logoutAcr called'), 'AzureContainerAppsV1 task should log Docker out of ACR at the end of the task to avoid leaving registry credentials on the agent.');
+            assert(tr.stdout.includes('[MOCK] sendLogs called'), 'AzureContainerAppsV1 task should send telemetry logs at the end of the task.');
+        }, tr);
+    });
+
+    it('Fails for no service connection argument', async () => {
+        this.timeout(5000);
+
+        const tp: string = path.join(__dirname, 'L0FailsForNoServiceConnectionArgument.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            // Validate the task failed
+            assert(tr.failed, 'AzureContainerAppsV1 task should have failed when no service connection argument is provided.');
+
+            // Validate the correct error message was thrown
+            assert(tr.stdout.includes('Input required: connectedServiceNameARM'), 'AzureContainerAppsV1 task should have failed when no service connection argument is provided.');
+
+            // Validate the correct result was logged to telemetry
+            assert(tr.stdout.includes('[MOCK] setFailedResult called'), 'AzureContainerAppsV1 task should signal to telemetry that the task failed.');
+
+            // Validate that the end-of-test scenarios are hit
+            assert(tr.stdout.includes('[MOCK] logoutAzure called'), 'AzureContainerAppsV1 task should try to logout of Azure at the end of the task.');
+            assert(tr.stdout.includes('[MOCK] logoutAcr called'), 'AzureContainerAppsV1 task should log Docker out of ACR at the end of the task to avoid leaving registry credentials on the agent.');
+            assert(tr.stdout.includes('[MOCK] sendLogs called'), 'AzureContainerAppsV1 task should send telemetry logs at the end of the task.');
+        }, tr);
+    });
+
+    it('Succeeds for creating a Container App with the Oryx++ builder', async () => {
+        this.timeout(5000);
+
+        const tp: string = path.join(__dirname, 'L0SucceedsForCreateWithBuilder.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            // Validate the task succeeded
+            assert(tr.succeeded, 'AzureContainerAppsV1 task should have succeeded when creating a Container App using an image produced from the Oryx++ builder.');
+
+            // Validate that the Azure CLI was set up correctly
+            assert(tr.stdout.includes('[MOCK] loginAzure called'), 'AzureContainerAppsV1 task should authenticate with the provided service connection.');
+            assert(tr.stdout.includes('[MOCK] setAzureCliDynamicInstall called'), 'AzureContainerAppsV1 task should have called ensure dynamic installation is enabled for the Azure CLI.');
+
+            // Validate that the necessary Azure resources were created
+            assert(tr.stdout.includes('DefaultContainerAppNameMessage'), 'AzureContainerAppsV1 task should generate the Container App name if not provided.');
+            assert(tr.stdout.includes('[MOCK] getDefaultContainerAppLocation called'), 'AzureContainerAppsV1 task should determine the default location for the Container App if not provided.');
+            assert(tr.stdout.includes('DefaultResourceGroupMessage'), 'AzureContainerAppsV1 task should generate the resource group name if not provided.');
+            assert(tr.stdout.includes('[MOCK] doesResourceGroupExist called'), 'AzureContainerAppsV1 task should check if the resource group exists.');
+            assert(tr.stdout.includes('[MOCK] createResourceGroup called'), 'AzureContainerAppsV1 task should create the resource group if it does not exist.');
+            assert(tr.stdout.includes('[MOCK] doesContainerAppExist called'), 'AzureContainerAppsV1 task should check if the Container App exists.');
+            assert(tr.stdout.includes('[MOCK] doesContainerAppEnvironmentExist called'), 'AzureContainerAppsV1 task should check if the Container App environment exists.');
+
+            // Validate authentication against ACR
+            assert(tr.stdout.includes('AcrAccessTokenLoginMessage'), 'AzureContainerAppsV1 task should authenticate with a generated access token if credentials are not provided.');
+            assert(tr.stdout.includes('[MOCK] loginAcrWithAccessTokenAsync called'), 'AzureContainerAppsV1 task should authenticate with a generated access token if credentials are not provided.');
+
+            // Validate image details were properly determined
+            assert(tr.stdout.includes('DefaultImageToBuildMessage'), 'AzureContainerAppsV1 task should generate the name of the image to build if not provided.');
+            assert(tr.stdout.includes('DefaultImageToDeployMessage'), 'AzureContainerAppsV1 task should generate the name of the image to deploy if not provided.');
+
+            // Validate that the image was built and pushed
+            assert(tr.stdout.includes('CheckForAppSourceDockerfileMessage'), 'AzureContainerAppsV1 task should check for a Dockerfile with application source is provided and no Dockerfile is provided.');
+            assert(tr.stdout.includes('[MOCK] installPackCliAsync called'), 'AzureContainerAppsV1 task should install the pack CLI with the build scenario.');
+            assert(tr.stdout.includes('[MOCK] determineRuntimeStackAsync called'), 'AzureContainerAppsV1 task should determine runtime stack to use if not provided with the builder scenario.');
+            assert(tr.stdout.includes('DefaultRuntimeStackMessage'), 'AzureContainerAppsV1 task should determine runtime stack to use if not provided with the builder scenario.');
+            assert(tr.stdout.includes('CreateImageWithBuilderMessage'), 'AzureContainerAppsV1 task should use the Oryx++ builder to produce a runnable application image based on the provided application source.');
+            assert(tr.stdout.includes('[MOCK] setDefaultBuilder called'), 'AzureContainerAppsV1 task should set the Oryx++ builder as the default builder with the builder scenario.');
+            assert(tr.stdout.includes('[MOCK] createRunnableAppImage called'), 'AzureContainerAppsV1 task should create a runnable application image with the builder scenario.');
+            assert(tr.stdout.includes('[MOCK] setBuilderScenario called'), 'AzureContainerAppsV1 task should signal to telemetry that the builder scenario was used.');
+            assert(tr.stdout.includes('[MOCK] pushImageToAcr called'), 'AzureContainerAppsV1 task should push the runnable application image to ACR with the builder scenario.');
+
+            // Validate that command line arguments were set correctly
+            assert(tr.stdout.includes('DefaultIngressMessage'), 'AzureContainerAppsV1 task should use a default ingress value if not provided during the create scenario.');
+            assert(tr.stdout.includes('DefaultTargetPortMessage'), 'AzureContainerAppsV1 task should use a default target port value if not provided during the create scenario.');
+
+            // Validate that the Container App was created
+            assert(tr.stdout.includes('[MOCK] createContainerApp called'), 'AzureContainerAppsV1 task should create a Container App.');
+
+            // Validate the correct result was logged to telemetry
+            assert(tr.stdout.includes('[MOCK] setSuccessfulResult called'), 'AzureContainerAppsV1 task should signal to telemetry that the task succeeded.');
+
+            // Validate that the end-of-test scenarios are hit
+            assert(tr.stdout.includes('[MOCK] logoutAzure called'), 'AzureContainerAppsV1 task should try to logout of Azure at the end of the task.');
+            assert(tr.stdout.includes('[MOCK] logoutAcr called'), 'AzureContainerAppsV1 task should log Docker out of ACR at the end of the task to avoid leaving registry credentials on the agent.');
+            assert(tr.stdout.includes('[MOCK] sendLogs called'), 'AzureContainerAppsV1 task should send telemetry logs at the end of the task.');
+        }, tr);
+    });
+
+    it('Succeeds for creating a Container App with a Dockerfile', async () => {
+        this.timeout(5000);
+
+        const tp: string = path.join(__dirname, 'L0SucceedsForCreateWithDockerfile.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            // Validate the task succeeded
+            assert(tr.succeeded, 'AzureContainerAppsV1 task should have succeeded when creating a Container App using an image produced from a Dockerfile.');
+
+            // Validate that the Azure CLI was set up correctly
+            assert(tr.stdout.includes('[MOCK] loginAzure called'), 'AzureContainerAppsV1 task should authenticate with the provided service connection.');
+            assert(tr.stdout.includes('[MOCK] setAzureCliDynamicInstall called'), 'AzureContainerAppsV1 task should have called ensure dynamic installation is enabled for the Azure CLI.');
+
+            // Validate that the necessary Azure resources were created
+            assert(tr.stdout.includes('DefaultContainerAppNameMessage'), 'AzureContainerAppsV1 task should generate the Container App name if not provided.');
+            assert(tr.stdout.includes('[MOCK] getDefaultContainerAppLocation called'), 'AzureContainerAppsV1 task should determine the default location for the Container App if not provided.');
+            assert(tr.stdout.includes('DefaultResourceGroupMessage'), 'AzureContainerAppsV1 task should generate the resource group name if not provided.');
+            assert(tr.stdout.includes('[MOCK] doesResourceGroupExist called'), 'AzureContainerAppsV1 task should check if the resource group exists.');
+            assert(tr.stdout.includes('[MOCK] createResourceGroup called'), 'AzureContainerAppsV1 task should create the resource group if it does not exist.');
+            assert(tr.stdout.includes('[MOCK] doesContainerAppExist called'), 'AzureContainerAppsV1 task should check if the Container App exists.');
+            assert(tr.stdout.includes('[MOCK] doesContainerAppEnvironmentExist called'), 'AzureContainerAppsV1 task should check if the Container App environment exists.');
+
+            // Validate authentication against ACR
+            assert(tr.stdout.includes('AcrAccessTokenLoginMessage'), 'AzureContainerAppsV1 task should authenticate with a generated access token if credentials are not provided.');
+            assert(tr.stdout.includes('[MOCK] loginAcrWithAccessTokenAsync called'), 'AzureContainerAppsV1 task should authenticate with a generated access token if credentials are not provided.');
+
+            // Validate image details were properly determined
+            assert(tr.stdout.includes('DefaultImageToBuildMessage'), 'AzureContainerAppsV1 task should generate the name of the image to build if not provided.');
+            assert(tr.stdout.includes('DefaultImageToDeployMessage'), 'AzureContainerAppsV1 task should generate the name of the image to deploy if not provided.');
+
+            // Validate that the image was built and pushed
+            assert(tr.stdout.includes('CreateImageWithDockerfileMessage'), 'AzureContainerAppsV1 task should build a runnable application image from a Dockerfile if provided.');
+            assert(tr.stdout.includes('[MOCK] createRunnableAppImageFromDockerfile called'), 'AzureContainerAppsV1 task should build a runnable application image from a Dockerfile if provided.');
+            assert(tr.stdout.includes('[MOCK] setDockerfileScenario called'), 'AzureContainerAppsV1 task should signal to telemetry that the Dockerfile scenario was used.');
+            assert(tr.stdout.includes('[MOCK] pushImageToAcr called'), 'AzureContainerAppsV1 task should push the runnable application image to ACR with the builder scenario.');
+
+            // Validate that command line arguments were set correctly
+            assert(tr.stdout.includes('DefaultIngressMessage'), 'AzureContainerAppsV1 task should use a default ingress value if not provided during the create scenario.');
+            assert(tr.stdout.includes('DefaultTargetPortMessage'), 'AzureContainerAppsV1 task should use a default target port value if not provided during the create scenario.');
+
+            // Validate that the Container App was created
+            assert(tr.stdout.includes('[MOCK] createContainerApp called'), 'AzureContainerAppsV1 task should create a Container App.');
+
+            // Validate the correct result was logged to telemetry
+            assert(tr.stdout.includes('[MOCK] setSuccessfulResult called'), 'AzureContainerAppsV1 task should signal to telemetry that the task succeeded.');
+
+            // Validate that the end-of-test scenarios are hit
+            assert(tr.stdout.includes('[MOCK] logoutAzure called'), 'AzureContainerAppsV1 task should try to logout of Azure at the end of the task.');
+            assert(tr.stdout.includes('[MOCK] logoutAcr called'), 'AzureContainerAppsV1 task should log Docker out of ACR at the end of the task to avoid leaving registry credentials on the agent.');
+            assert(tr.stdout.includes('[MOCK] sendLogs called'), 'AzureContainerAppsV1 task should send telemetry logs at the end of the task.');
+        }, tr);
+    });
+
+    it('Succeeds for creating a Container App with a previously built image', async () => {
+        this.timeout(5000);
+
+        const tp: string = path.join(__dirname, 'L0SucceedsForCreateWithImage.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            // Validate the task succeeded
+            assert(tr.succeeded, 'AzureContainerAppsV1 task should have succeeded when creating a Container App using an image produced from a previously built image.');
+
+            // Validate that the Azure CLI was set up correctly
+            assert(tr.stdout.includes('[MOCK] loginAzure called'), 'AzureContainerAppsV1 task should authenticate with the provided service connection.');
+            assert(tr.stdout.includes('[MOCK] setAzureCliDynamicInstall called'), 'AzureContainerAppsV1 task should have called ensure dynamic installation is enabled for the Azure CLI.');
+
+            // Validate that the necessary Azure resources were created
+            assert(tr.stdout.includes('DefaultContainerAppNameMessage'), 'AzureContainerAppsV1 task should generate the Container App name if not provided.');
+            assert(tr.stdout.includes('[MOCK] getDefaultContainerAppLocation called'), 'AzureContainerAppsV1 task should determine the default location for the Container App if not provided.');
+            assert(tr.stdout.includes('DefaultResourceGroupMessage'), 'AzureContainerAppsV1 task should generate the resource group name if not provided.');
+            assert(tr.stdout.includes('[MOCK] doesResourceGroupExist called'), 'AzureContainerAppsV1 task should check if the resource group exists.');
+            assert(tr.stdout.includes('[MOCK] createResourceGroup called'), 'AzureContainerAppsV1 task should create the resource group if it does not exist.');
+            assert(tr.stdout.includes('[MOCK] doesContainerAppExist called'), 'AzureContainerAppsV1 task should check if the Container App exists.');
+            assert(tr.stdout.includes('[MOCK] doesContainerAppEnvironmentExist called'), 'AzureContainerAppsV1 task should check if the Container App environment exists.');
+
+            // Validate that the image scenario was targeted
+            assert(tr.stdout.includes('[MOCK] setImageScenario called'), 'AzureContainerAppsV1 task should signal to telemetry that the previously built image scenario was used.');
+
+            // Validate that command line arguments were set correctly
+            assert(tr.stdout.includes('DefaultIngressMessage'), 'AzureContainerAppsV1 task should use a default ingress value if not provided during the create scenario.');
+            assert(tr.stdout.includes('DefaultTargetPortMessage'), 'AzureContainerAppsV1 task should use a default target port value if not provided during the create scenario.');
+
+            // Validate that the Container App was created
+            assert(tr.stdout.includes('[MOCK] createContainerApp called'), 'AzureContainerAppsV1 task should create a Container App.');
+
+            // Validate the correct result was logged to telemetry
+            assert(tr.stdout.includes('[MOCK] setSuccessfulResult called'), 'AzureContainerAppsV1 task should signal to telemetry that the task succeeded.');
+
+            // Validate that the end-of-test scenarios are hit
+            assert(tr.stdout.includes('[MOCK] logoutAzure called'), 'AzureContainerAppsV1 task should try to logout of Azure at the end of the task.');
+            assert(tr.stdout.includes('[MOCK] logoutAcr called'), 'AzureContainerAppsV1 task should log Docker out of ACR at the end of the task to avoid leaving registry credentials on the agent.');
+            assert(tr.stdout.includes('[MOCK] sendLogs called'), 'AzureContainerAppsV1 task should send telemetry logs at the end of the task.');
+        }, tr);
+    });
+
+    it('Succeeds for creating a Container App with a new Container App environment', async () => {
+        this.timeout(5000);
+
+        const tp: string = path.join(__dirname, 'L0SucceedsForCreateWithNewEnvironment.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            // Validate the task succeeded
+            assert(tr.succeeded, 'AzureContainerAppsV1 task should have succeeded when creating a Container App with a new Container App environment.');
+
+            // Validate that the Azure CLI was set up correctly
+            assert(tr.stdout.includes('[MOCK] loginAzure called'), 'AzureContainerAppsV1 task should authenticate with the provided service connection.');
+            assert(tr.stdout.includes('[MOCK] setAzureCliDynamicInstall called'), 'AzureContainerAppsV1 task should have called ensure dynamic installation is enabled for the Azure CLI.');
+
+            // Validate that the necessary Azure resources were created
+            assert(tr.stdout.includes('DefaultContainerAppNameMessage'), 'AzureContainerAppsV1 task should generate the Container App name if not provided.');
+            assert(tr.stdout.includes('[MOCK] getDefaultContainerAppLocation called'), 'AzureContainerAppsV1 task should determine the default location for the Container App if not provided.');
+            assert(tr.stdout.includes('DefaultResourceGroupMessage'), 'AzureContainerAppsV1 task should generate the resource group name if not provided.');
+            assert(tr.stdout.includes('[MOCK] doesResourceGroupExist called'), 'AzureContainerAppsV1 task should check if the resource group exists.');
+            assert(tr.stdout.includes('[MOCK] createResourceGroup called'), 'AzureContainerAppsV1 task should create the resource group if it does not exist.');
+            assert(tr.stdout.includes('[MOCK] doesContainerAppExist called'), 'AzureContainerAppsV1 task should check if the Container App exists.');
+            assert(tr.stdout.includes('[MOCK] getExistingContainerAppEnvironment called'), 'AzureContainerAppsV1 task should try to get an existing Container App environment if one was not provided.');
+            assert(tr.stdout.includes('DefaultContainerAppEnvironmentMessage'), 'AzureContainerAppsV1 task should generate the Container App environment name if not provided or discovered.');
+            assert(tr.stdout.includes('[MOCK] doesContainerAppEnvironmentExist called'), 'AzureContainerAppsV1 task should check if the Container App environment exists.');
+            assert(tr.stdout.includes('[MOCK] createContainerAppEnvironment called'), 'AzureContainerAppsV1 task should create the Container App environment if it does not exist.');
+
+            // Validate that the image scenario was targeted
+            assert(tr.stdout.includes('[MOCK] setImageScenario called'), 'AzureContainerAppsV1 task should signal to telemetry that the previously built image scenario was used.');
+
+            // Validate that command line arguments were set correctly
+            assert(tr.stdout.includes('DefaultIngressMessage'), 'AzureContainerAppsV1 task should use a default ingress value if not provided during the create scenario.');
+            assert(tr.stdout.includes('DefaultTargetPortMessage'), 'AzureContainerAppsV1 task should use a default target port value if not provided during the create scenario.');
+
+            // Validate that the Container App was created
+            assert(tr.stdout.includes('[MOCK] createContainerApp called'), 'AzureContainerAppsV1 task should create a Container App.');
+
+            // Validate the correct result was logged to telemetry
+            assert(tr.stdout.includes('[MOCK] setSuccessfulResult called'), 'AzureContainerAppsV1 task should signal to telemetry that the task succeeded.');
+
+            // Validate that the end-of-test scenarios are hit
+            assert(tr.stdout.includes('[MOCK] logoutAzure called'), 'AzureContainerAppsV1 task should try to logout of Azure at the end of the task.');
+            assert(tr.stdout.includes('[MOCK] logoutAcr called'), 'AzureContainerAppsV1 task should log Docker out of ACR at the end of the task to avoid leaving registry credentials on the agent.');
+            assert(tr.stdout.includes('[MOCK] sendLogs called'), 'AzureContainerAppsV1 task should send telemetry logs at the end of the task.');
+        }, tr);
+    });
+
+    it('Succeeds for creating a Container App with a YAML configuration file and an image produced from the Oryx++ builder', async () => {
+        this.timeout(5000);
+
+        const tp: string = path.join(__dirname, 'L0SucceedsForCreateWithYamlAndBuilder.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            // Validate the task succeeded
+            assert(tr.succeeded, 'AzureContainerAppsV1 task should have succeeded when creating a Container App using a YAML configuration file and an image produced from the Oryx++ builder.');
+
+            // Validate that the Azure CLI was set up correctly
+            assert(tr.stdout.includes('[MOCK] loginAzure called'), 'AzureContainerAppsV1 task should authenticate with the provided service connection.');
+            assert(tr.stdout.includes('[MOCK] setAzureCliDynamicInstall called'), 'AzureContainerAppsV1 task should have called ensure dynamic installation is enabled for the Azure CLI.');
+
+            // Validate that the necessary Azure resources were created
+            assert(tr.stdout.includes('DefaultContainerAppNameMessage'), 'AzureContainerAppsV1 task should generate the Container App name if not provided.');
+            assert(tr.stdout.includes('[MOCK] getDefaultContainerAppLocation called'), 'AzureContainerAppsV1 task should determine the default location for the Container App if not provided.');
+            assert(tr.stdout.includes('DefaultResourceGroupMessage'), 'AzureContainerAppsV1 task should generate the resource group name if not provided.');
+            assert(tr.stdout.includes('[MOCK] doesResourceGroupExist called'), 'AzureContainerAppsV1 task should check if the resource group exists.');
+            assert(tr.stdout.includes('[MOCK] createResourceGroup called'), 'AzureContainerAppsV1 task should create the resource group if it does not exist.');
+            assert(tr.stdout.includes('[MOCK] doesContainerAppExist called'), 'AzureContainerAppsV1 task should check if the Container App exists.');
+            assert(tr.stdout.includes('[MOCK] doesContainerAppEnvironmentExist called'), 'AzureContainerAppsV1 task should check if the Container App environment exists.');
+
+            // Validate authentication against ACR
+            assert(tr.stdout.includes('AcrAccessTokenLoginMessage'), 'AzureContainerAppsV1 task should authenticate with a generated access token if credentials are not provided.');
+            assert(tr.stdout.includes('[MOCK] loginAcrWithAccessTokenAsync called'), 'AzureContainerAppsV1 task should authenticate with a generated access token if credentials are not provided.');
+
+            // Validate image details were properly determined
+            assert(tr.stdout.includes('DefaultImageToBuildMessage'), 'AzureContainerAppsV1 task should generate the name of the image to build if not provided.');
+            assert(tr.stdout.includes('DefaultImageToDeployMessage'), 'AzureContainerAppsV1 task should generate the name of the image to deploy if not provided.');
+
+            // Validate that the image was built and pushed
+            assert(tr.stdout.includes('CheckForAppSourceDockerfileMessage'), 'AzureContainerAppsV1 task should check for a Dockerfile with application source is provided and no Dockerfile is provided.');
+            assert(tr.stdout.includes('[MOCK] installPackCliAsync called'), 'AzureContainerAppsV1 task should install the pack CLI with the build scenario.');
+            assert(tr.stdout.includes('[MOCK] determineRuntimeStackAsync called'), 'AzureContainerAppsV1 task should determine runtime stack to use if not provided with the builder scenario.');
+            assert(tr.stdout.includes('DefaultRuntimeStackMessage'), 'AzureContainerAppsV1 task should determine runtime stack to use if not provided with the builder scenario.');
+            assert(tr.stdout.includes('CreateImageWithBuilderMessage'), 'AzureContainerAppsV1 task should use the Oryx++ builder to produce a runnable application image based on the provided application source.');
+            assert(tr.stdout.includes('[MOCK] setDefaultBuilder called'), 'AzureContainerAppsV1 task should set the Oryx++ builder as the default builder with the builder scenario.');
+            assert(tr.stdout.includes('[MOCK] createRunnableAppImage called'), 'AzureContainerAppsV1 task should create a runnable application image with the builder scenario.');
+            assert(tr.stdout.includes('[MOCK] setBuilderScenario called'), 'AzureContainerAppsV1 task should signal to telemetry that the builder scenario was used.');
+            assert(tr.stdout.includes('[MOCK] pushImageToAcr called'), 'AzureContainerAppsV1 task should push the runnable application image to ACR with the builder scenario.');
+
+            // Validate that the Container App was created
+            assert(tr.stdout.includes('[MOCK] createContainerAppFromYaml called'), 'AzureContainerAppsV1 task should create a Container App from the YAML configuration file if provided.');
+
+            // Validate the correct result was logged to telemetry
+            assert(tr.stdout.includes('[MOCK] setSuccessfulResult called'), 'AzureContainerAppsV1 task should signal to telemetry that the task succeeded.');
+
+            // Validate that the end-of-test scenarios are hit
+            assert(tr.stdout.includes('[MOCK] logoutAzure called'), 'AzureContainerAppsV1 task should try to logout of Azure at the end of the task.');
+            assert(tr.stdout.includes('[MOCK] logoutAcr called'), 'AzureContainerAppsV1 task should log Docker out of ACR at the end of the task to avoid leaving registry credentials on the agent.');
+            assert(tr.stdout.includes('[MOCK] sendLogs called'), 'AzureContainerAppsV1 task should send telemetry logs at the end of the task.');
+        }, tr);
+    });
+
+    it('Succeeds for creating a Container App with a YAML configuration file and a previously built image', async () => {
+        this.timeout(5000);
+
+        const tp: string = path.join(__dirname, 'L0SucceedsForCreateWithYamlAndImage.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            // Validate the task succeeded
+            assert(tr.succeeded, 'AzureContainerAppsV1 task should have succeeded when creating a Container App using a YAML configuration file and a previously built image.');
+
+            // Validate that the Azure CLI was set up correctly
+            assert(tr.stdout.includes('[MOCK] loginAzure called'), 'AzureContainerAppsV1 task should authenticate with the provided service connection.');
+            assert(tr.stdout.includes('[MOCK] setAzureCliDynamicInstall called'), 'AzureContainerAppsV1 task should have called ensure dynamic installation is enabled for the Azure CLI.');
+
+            // Validate that the necessary Azure resources were created
+            assert(tr.stdout.includes('DefaultContainerAppNameMessage'), 'AzureContainerAppsV1 task should generate the Container App name if not provided.');
+            assert(tr.stdout.includes('[MOCK] getDefaultContainerAppLocation called'), 'AzureContainerAppsV1 task should determine the default location for the Container App if not provided.');
+            assert(tr.stdout.includes('DefaultResourceGroupMessage'), 'AzureContainerAppsV1 task should generate the resource group name if not provided.');
+            assert(tr.stdout.includes('[MOCK] doesResourceGroupExist called'), 'AzureContainerAppsV1 task should check if the resource group exists.');
+            assert(tr.stdout.includes('[MOCK] createResourceGroup called'), 'AzureContainerAppsV1 task should create the resource group if it does not exist.');
+            assert(tr.stdout.includes('[MOCK] doesContainerAppExist called'), 'AzureContainerAppsV1 task should check if the Container App exists.');
+            assert(tr.stdout.includes('[MOCK] doesContainerAppEnvironmentExist called'), 'AzureContainerAppsV1 task should check if the Container App environment exists.');
+
+            // Validate that the image scenario was targeted
+            assert(tr.stdout.includes('[MOCK] setImageScenario called'), 'AzureContainerAppsV1 task should signal to telemetry that the previously built image scenario was used.');
+
+            // Validate that the Container App was created
+            assert(tr.stdout.includes('[MOCK] createContainerAppFromYaml called'), 'AzureContainerAppsV1 task should create a Container App from a YAML configuration file.');
+
+            // Validate the correct result was logged to telemetry
+            assert(tr.stdout.includes('[MOCK] setSuccessfulResult called'), 'AzureContainerAppsV1 task should signal to telemetry that the task succeeded.');
+
+            // Validate that the end-of-test scenarios are hit
+            assert(tr.stdout.includes('[MOCK] logoutAzure called'), 'AzureContainerAppsV1 task should try to logout of Azure at the end of the task.');
+            assert(tr.stdout.includes('[MOCK] logoutAcr called'), 'AzureContainerAppsV1 task should log Docker out of ACR at the end of the task to avoid leaving registry credentials on the agent.');
+            assert(tr.stdout.includes('[MOCK] sendLogs called'), 'AzureContainerAppsV1 task should send telemetry logs at the end of the task.');
+        }, tr);
+    });
+
+    it('Succeeds for updating a Container App with the Oryx++ builder', async () => {
+        this.timeout(5000);
+
+        const tp: string = path.join(__dirname, 'L0SucceedsForUpdateWithBuilder.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            // Validate the task succeeded
+            assert(tr.succeeded, 'AzureContainerAppsV1 task should have succeeded when updating an existing Container App using an image produced from the Oryx++ builder.');
+
+            // Validate that the Azure CLI was set up correctly
+            assert(tr.stdout.includes('[MOCK] loginAzure called'), 'AzureContainerAppsV1 task should authenticate with the provided service connection.');
+            assert(tr.stdout.includes('[MOCK] setAzureCliDynamicInstall called'), 'AzureContainerAppsV1 task should have called ensure dynamic installation is enabled for the Azure CLI.');
+
+            // Validate that the necessary Azure resources exist
+            assert(tr.stdout.includes('[MOCK] getDefaultContainerAppLocation called'), 'AzureContainerAppsV1 task should determine the default location for the Container App if not provided.');
+            assert(tr.stdout.includes('[MOCK] doesContainerAppExist called'), 'AzureContainerAppsV1 task should check if the Container App exists.');
+
+            // Validate authentication against ACR
+            assert(tr.stdout.includes('AcrAccessTokenLoginMessage'), 'AzureContainerAppsV1 task should authenticate with a generated access token if credentials are not provided.');
+            assert(tr.stdout.includes('[MOCK] loginAcrWithAccessTokenAsync called'), 'AzureContainerAppsV1 task should authenticate with a generated access token if credentials are not provided.');
+
+            // Validate image details were properly determined
+            assert(tr.stdout.includes('DefaultImageToBuildMessage'), 'AzureContainerAppsV1 task should generate the name of the image to build if not provided.');
+            assert(tr.stdout.includes('DefaultImageToDeployMessage'), 'AzureContainerAppsV1 task should generate the name of the image to deploy if not provided.');
+
+            // Validate that the image was built and pushed
+            assert(tr.stdout.includes('CheckForAppSourceDockerfileMessage'), 'AzureContainerAppsV1 task should check for a Dockerfile with application source is provided and no Dockerfile is provided.');
+            assert(tr.stdout.includes('[MOCK] installPackCliAsync called'), 'AzureContainerAppsV1 task should install the pack CLI with the build scenario.');
+            assert(tr.stdout.includes('[MOCK] determineRuntimeStackAsync called'), 'AzureContainerAppsV1 task should determine runtime stack to use if not provided with the builder scenario.');
+            assert(tr.stdout.includes('DefaultRuntimeStackMessage'), 'AzureContainerAppsV1 task should determine runtime stack to use if not provided with the builder scenario.');
+            assert(tr.stdout.includes('CreateImageWithBuilderMessage'), 'AzureContainerAppsV1 task should use the Oryx++ builder to produce a runnable application image based on the provided application source.');
+            assert(tr.stdout.includes('[MOCK] setDefaultBuilder called'), 'AzureContainerAppsV1 task should set the Oryx++ builder as the default builder with the builder scenario.');
+            assert(tr.stdout.includes('[MOCK] createRunnableAppImage called'), 'AzureContainerAppsV1 task should create a runnable application image with the builder scenario.');
+            assert(tr.stdout.includes('[MOCK] setBuilderScenario called'), 'AzureContainerAppsV1 task should signal to telemetry that the builder scenario was used.');
+            assert(tr.stdout.includes('[MOCK] pushImageToAcr called'), 'AzureContainerAppsV1 task should push the runnable application image to ACR with the builder scenario.');
+
+            // Validate that the Container App was updated
+            assert(tr.stdout.includes('[MOCK] updateContainerApp called'), 'AzureContainerAppsV1 task should update an existing Container App.');
+
+            // Validate the correct result was logged to telemetry
+            assert(tr.stdout.includes('[MOCK] setSuccessfulResult called'), 'AzureContainerAppsV1 task should signal to telemetry that the task succeeded.');
+
+            // Validate that the end-of-test scenarios are hit
+            assert(tr.stdout.includes('[MOCK] logoutAzure called'), 'AzureContainerAppsV1 task should try to logout of Azure at the end of the task.');
+            assert(tr.stdout.includes('[MOCK] logoutAcr called'), 'AzureContainerAppsV1 task should log Docker out of ACR at the end of the task to avoid leaving registry credentials on the agent.');
+            assert(tr.stdout.includes('[MOCK] sendLogs called'), 'AzureContainerAppsV1 task should send telemetry logs at the end of the task.');
+        }, tr);
+    });
+
+    it('Succeeds for updating a Container App with a previously built image', async () => {
+        this.timeout(5000);
+
+        const tp: string = path.join(__dirname, 'L0SucceedsForUpdateWithImage.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            // Validate the task succeeded
+            assert(tr.succeeded, 'AzureContainerAppsV1 task should have succeeded when updating an existing Container App using an image produced from a previously built image.');
+
+            // Validate that the Azure CLI was set up correctly
+            assert(tr.stdout.includes('[MOCK] loginAzure called'), 'AzureContainerAppsV1 task should authenticate with the provided service connection.');
+            assert(tr.stdout.includes('[MOCK] setAzureCliDynamicInstall called'), 'AzureContainerAppsV1 task should have called ensure dynamic installation is enabled for the Azure CLI.');
+
+            // Validate that the necessary Azure resources exist
+            assert(tr.stdout.includes('[MOCK] getDefaultContainerAppLocation called'), 'AzureContainerAppsV1 task should determine the default location for the Container App if not provided.');
+            assert(tr.stdout.includes('[MOCK] doesContainerAppExist called'), 'AzureContainerAppsV1 task should check if the Container App exists.');
+
+            // Validate that the image scenario was targeted
+            assert(tr.stdout.includes('[MOCK] setImageScenario called'), 'AzureContainerAppsV1 task should signal to telemetry that the previously built image scenario was used.');
+
+            // Validate that the Container App was created
+            assert(tr.stdout.includes('[MOCK] updateContainerApp called'), 'AzureContainerAppsV1 task should update an existing Container App.');
+
+            // Validate the correct result was logged to telemetry
+            assert(tr.stdout.includes('[MOCK] setSuccessfulResult called'), 'AzureContainerAppsV1 task should signal to telemetry that the task succeeded.');
+
+            // Validate that the end-of-test scenarios are hit
+            assert(tr.stdout.includes('[MOCK] logoutAzure called'), 'AzureContainerAppsV1 task should try to logout of Azure at the end of the task.');
+            assert(tr.stdout.includes('[MOCK] logoutAcr called'), 'AzureContainerAppsV1 task should log Docker out of ACR at the end of the task to avoid leaving registry credentials on the agent.');
+            assert(tr.stdout.includes('[MOCK] sendLogs called'), 'AzureContainerAppsV1 task should send telemetry logs at the end of the task.');
+        }, tr);
+    });
+
+    it('Succeeds for updating a Container App with a YAML configuration file and a previously built image', async () => {
+        this.timeout(5000);
+
+        const tp: string = path.join(__dirname, 'L0SucceedsForUpdateWithYamlAndImage.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            // Validate the task succeeded
+            assert(tr.succeeded, 'AzureContainerAppsV1 task should have succeeded when updating an existing Container App using a YAML configuration file and a previously built image.');
+
+            // Validate that the Azure CLI was set up correctly
+            assert(tr.stdout.includes('[MOCK] loginAzure called'), 'AzureContainerAppsV1 task should authenticate with the provided service connection.');
+            assert(tr.stdout.includes('[MOCK] setAzureCliDynamicInstall called'), 'AzureContainerAppsV1 task should have called ensure dynamic installation is enabled for the Azure CLI.');
+
+            // Validate that the necessary Azure resources exist
+            assert(tr.stdout.includes('[MOCK] getDefaultContainerAppLocation called'), 'AzureContainerAppsV1 task should determine the default location for the Container App if not provided.');
+            assert(tr.stdout.includes('[MOCK] doesContainerAppExist called'), 'AzureContainerAppsV1 task should check if the Container App exists.');
+
+            // Validate that the image scenario was targeted
+            assert(tr.stdout.includes('[MOCK] setImageScenario called'), 'AzureContainerAppsV1 task should signal to telemetry that the previously built image scenario was used.');
+
+            // Validate that the Container App was created
+            assert(tr.stdout.includes('[MOCK] updateContainerAppFromYaml called'), 'AzureContainerAppsV1 task should update an existing Container App from a YAML configuration file.');
+
+            // Validate the correct result was logged to telemetry
+            assert(tr.stdout.includes('[MOCK] setSuccessfulResult called'), 'AzureContainerAppsV1 task should signal to telemetry that the task succeeded.');
+
+            // Validate that the end-of-test scenarios are hit
+            assert(tr.stdout.includes('[MOCK] logoutAzure called'), 'AzureContainerAppsV1 task should try to logout of Azure at the end of the task.');
+            assert(tr.stdout.includes('[MOCK] logoutAcr called'), 'AzureContainerAppsV1 task should log Docker out of ACR at the end of the task to avoid leaving registry credentials on the agent.');
+            assert(tr.stdout.includes('[MOCK] sendLogs called'), 'AzureContainerAppsV1 task should send telemetry logs at the end of the task.');
+        }, tr);
+    });
+
+    it('Passes appSourcePath to execSync as a single argument when UseArgArrayForFilePath is enabled', () => {
+        // With the feature flag ON, appSourcePath must be passed as a single execSync array element
+        // so its contents cannot be interpreted as additional arguments.
+        const tl = require('azure-pipelines-task-lib/task');
+        const { ContainerAppHelper } = require('../src/ContainerAppHelper');
+
+        const injectionAppSourcePath = '/samplepath --builder attacker/image --env INJECTED=true';
+        const originalExecSync = tl.execSync;
+        const originalFeatureEnv = process.env['DISTRIBUTEDTASK_TASKS_USEARGARRAYFORFILEPATH'];
+        let capturedArgs: any;
+        tl.execSync = (tool: string, args: any) => {
+            capturedArgs = args;
+            return { code: 0, stdout: '', stderr: '', error: null };
+        };
+        process.env['DISTRIBUTEDTASK_TASKS_USEARGARRAYFORFILEPATH'] = 'true';
+
+        try {
+            new ContainerAppHelper(true).createRunnableAppImage('sample-image:tag', injectionAppSourcePath, 'dotnetcore:7.0');
+        } finally {
+            tl.execSync = originalExecSync;
+            process.env['DISTRIBUTEDTASK_TASKS_USEARGARRAYFORFILEPATH'] = originalFeatureEnv;
+        }
+
+        assert(Array.isArray(capturedArgs), 'createRunnableAppImage should invoke execSync with an array of arguments, not a single command string.');
+        assert(capturedArgs.indexOf(injectionAppSourcePath) !== -1, 'appSourcePath must be passed as a single execSync argument so its contents cannot be interpreted as additional arguments.');
+    });
+
+    it('Passes appSourcePath in the legacy command string when UseArgArrayForFilePath is disabled', () => {
+        // With the feature flag OFF (default), the task retains the original string-based command
+        // form for backwards compatibility.
+        const tl = require('azure-pipelines-task-lib/task');
+        const { ContainerAppHelper } = require('../src/ContainerAppHelper');
+
+        const appSourcePath = '/samplepath';
+        const originalExecSync = tl.execSync;
+        const originalFeatureEnv = process.env['DISTRIBUTEDTASK_TASKS_USEARGARRAYFORFILEPATH'];
+        let capturedArgs: any;
+        tl.execSync = (tool: string, args: any) => {
+            capturedArgs = args;
+            return { code: 0, stdout: '', stderr: '', error: null };
+        };
+        process.env['DISTRIBUTEDTASK_TASKS_USEARGARRAYFORFILEPATH'] = 'false';
+
+        try {
+            new ContainerAppHelper(true).createRunnableAppImage('sample-image:tag', appSourcePath, 'dotnetcore:7.0');
+        } finally {
+            tl.execSync = originalExecSync;
+            process.env['DISTRIBUTEDTASK_TASKS_USEARGARRAYFORFILEPATH'] = originalFeatureEnv;
+        }
+
+        assert(typeof capturedArgs === 'string', 'createRunnableAppImage should invoke execSync with a single command string when the feature flag is disabled.');
+        assert(capturedArgs.indexOf(`--path ${appSourcePath}`) !== -1, 'appSourcePath should be interpolated into the legacy command string when the feature flag is disabled.');
+    });
+});
+
+describe('AzureContainerApps Docker output filtering', function () {
+    const tl = require('azure-pipelines-task-lib/task');
+    const childProcess = require('child_process');
+    const { Writable } = require('stream');
+    const { ContainerAppHelper } = require('../src/ContainerAppHelper');
+    const blockingFeature = 'DISTRIBUTEDTASK_TASKS_AZURECONTAINERAPPSENABLEVSOCOMMANDBLOCKING';
+    const argumentFeature = 'DISTRIBUTEDTASK_TASKS_USEARGARRAYFORFILEPATH';
+    const stdout = 'ordinary build output\n##vso[task.setvariable variable=NODE_OPTIONS]--trace-warnings\n';
+    const stderr = '#9 0.055 ##vso[task.setvariable variable=NODE_OPTIONS]--trace-warnings\nordinary build diagnostic\n';
+
+    for (const featureValue of [undefined, 'false', 'true']) {
+        for (const disableTelemetry of [false, true]) {
+            for (const useArgArray of ['false', 'true']) {
+                for (const exitCode of [0, 1]) {
+                    it(`filters both build streams with blocking=${featureValue}, telemetry disabled=${disableTelemetry}, argument arrays=${useArgArray}, exit=${exitCode}`, () => {
+                        const originalExecSync = tl.execSync;
+                        const originalSpawnSync = childProcess.spawnSync;
+                        const originalBlockingFeature = process.env[blockingFeature];
+                        const originalArgumentFeature = process.env[argumentFeature];
+                        let loggedStdout = '';
+                        let loggedStderr = '';
+                        let telemetry = '';
+                        let executions = 0;
+                        let failure: any;
+                        const capture = (write: (value: string) => void) => new Writable({
+                            write(chunk, encoding, callback) {
+                                write(chunk.toString());
+                                callback();
+                            }
+                        });
+                        try {
+                            if (featureValue === undefined) {
+                                delete process.env[blockingFeature];
+                            } else {
+                                process.env[blockingFeature] = featureValue;
+                            }
+                            process.env[argumentFeature] = useArgArray;
+                            tl.setStdStream(capture(value => { telemetry += value; }));
+                            childProcess.spawnSync = () => ({ status: exitCode, stdout: Buffer.from(stdout), stderr: Buffer.from(stderr) });
+                            tl.execSync = (tool: string, args: string | string[], options: any) => {
+                                executions++;
+                                assert.strictEqual(tool, 'docker');
+                                assert.deepStrictEqual(args, useArgArray === 'true'
+                                    ? ['build', '--tag', 'sample-image:tag', '--file', '/samplepath/Dockerfile', '/samplepath']
+                                    : 'build --tag sample-image:tag --file /samplepath/Dockerfile /samplepath');
+                                assert.deepStrictEqual(options.externalOutput, {
+                                    source: 'childProcess',
+                                    vsoCommandMode: disableTelemetry
+                                        ? (featureValue === 'true' ? 'blockOnly' : 'disabled')
+                                        : (featureValue === 'true' ? 'blockAndTelemetry' : 'telemetryOnly')
+                                });
+                                return originalExecSync.call(tl, process.execPath, args, {
+                                    ...options,
+                                    outStream: capture(value => { loggedStdout += value; }),
+                                    errStream: capture(value => { loggedStderr += value; })
+                                });
+                            };
+                            try {
+                                new ContainerAppHelper(disableTelemetry).createRunnableAppImageFromDockerfile('sample-image:tag', '/samplepath', '/samplepath/Dockerfile');
+                            } catch (error) {
+                                failure = error;
+                            }
+                            assert.strictEqual(executions, 1);
+                            if (exitCode === 0) {
+                                assert.strictEqual(failure, undefined);
+                            } else {
+                                assert.strictEqual(failure && failure.code, exitCode);
+                            }
+                            const blocked = featureValue === 'true';
+                            assert(loggedStdout.endsWith(blocked ? stdout.replace(/##vso\[/g, '##_vso[') : stdout));
+                            assert.strictEqual(loggedStderr, blocked ? stderr.replace(/##vso\[/g, '##_vso[') : stderr);
+                            const events = telemetry.split('\n').filter(line => line.includes('"commandName":"task.setvariable"'));
+                            assert.strictEqual(events.length, disableTelemetry ? 0 : 2);
+                            assert(events.every(event => event.includes('"source":"childProcess"') && event.includes('"blocked":' + blocked)));
+                            assert(!telemetry.includes('NODE_OPTIONS'), 'telemetry must exclude command properties');
+                            assert(!telemetry.includes('--trace-warnings'), 'telemetry must exclude command data');
+                        } finally {
+                            tl.execSync = originalExecSync;
+                            childProcess.spawnSync = originalSpawnSync;
+                            tl.setStdStream(process.stdout);
+                            for (const [name, value] of [[blockingFeature, originalBlockingFeature], [argumentFeature, originalArgumentFeature]]) {
+                                if (value === undefined) {
+                                    delete process.env[name];
+                                } else {
+                                    process.env[name] = value;
+                                }
+                            }
+                        }
+                    });
+                }
+            }
+        }
+    }
+});

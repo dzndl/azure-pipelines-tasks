@@ -5,10 +5,13 @@ import tl = require('azure-pipelines-task-lib');
 
 describe('Docker Compose Suite', function() {
     this.timeout(30000);
-    before((done) => {
-        done();
+    let composeCommand: string;
+
+    before(() => {
+        composeCommand = "docker-compose";
     });
-     beforeEach(() => {
+
+    beforeEach(() => {
         delete process.env["__command__"];
         delete process.env["__container_type__"];
         delete process.env["__qualifyImageNames__"];
@@ -18,247 +21,297 @@ describe('Docker Compose Suite', function() {
         delete process.env["__arguments__"];
         delete process.env["__dockerComposePath__"];
     });
-    after(function () {
-    });
 
-    if(tl.osType().match(/^Win/)) {
-         it('Runs successfully for windows docker compose service build', (done:Mocha.Done) => {
+    if (tl.getPlatform() === tl.Platform.Windows) {
+        it('Runs successfully for windows docker compose service build', async () => {
             let tp = path.join(__dirname, 'L0Windows.js');
             let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
             process.env["__command__"] = "Build services";
-            tr.run();
+
+            await tr.runAsync();
 
             assert(tr.invokedToolCount == 1, 'should have invoked tool one times. actual: ' + tr.invokedToolCount);
             assert(tr.stderr.length == 0 || tr.errorIssues.length, 'should not have written to stderr');
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.stdout.indexOf("[command]docker-compose -f F:\\dir2\\docker-compose.yml build") != -1, "docker compose build should run");
-            console.log(tr.stderr);
-            done();
+            assert(tr.stdout.indexOf("[command]" + composeCommand + " -f F:\\dir2\\docker-compose.yml build") != -1, "docker compose build should run");
         });
 
-        it('Runs successfully for windows docker compose service build, using user defined dcoker compose exe', (done:Mocha.Done) => {
+        it('Runs successfully for windows docker compose service build, using user defined docker compose exe', async () => {
             let tp = path.join(__dirname, 'L0Windows.js');
             let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
             process.env["__command__"] = "Build services";
             process.env["__dockerComposePath__"] = "docker-compose-userdefined";
-            tr.run();
+
+            await tr.runAsync();
 
             assert(tr.invokedToolCount == 1, 'should have invoked tool one times. actual: ' + tr.invokedToolCount);
             assert(tr.stderr.length == 0 || tr.errorIssues.length, 'should not have written to stderr');
             assert(tr.succeeded, 'task should have succeeded');
             assert(tr.stdout.indexOf("[command]docker-compose-userdefined -f F:\\dir2\\docker-compose.yml build") != -1, "docker compose build should run");
-            console.log(tr.stderr);
-            done();
         });
 
-        it('Runs successfully for windows docker compose push service', (done:Mocha.Done) => {
+        it('Runs successfully for windows docker compose service build and neutralizes ##vso[ commands in output', async () => {
+            let tp = path.join(__dirname, 'L0Windows.js');
+            let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+            process.env["__command__"] = "Build services";
+            process.env["__composeFilePath__"] = "F:\\dir2\\vsoinjection-compose.yml";
+
+            await tr.runAsync();
+
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.stdout.indexOf("Step 1/2 : FROM node:18\n##vso[task.setvariable") == -1,
+                "##vso[ markers from attacker-controlled compose build output must be neutralized before reaching the log");
+            assert(tr.stdout.indexOf("Step 1/2 : FROM node:18\n#vso[task.setvariable variable=NODE_OPTIONS]--require /tmp/evil.js\nsucessfully built the service images") != -1,
+                "sanitized marker (single #) should still be present so the output stays readable");
+        });
+
+        it('Runs successfully for windows docker compose config and neutralizes ##vso[ commands on stderr', async () => {
+            let tp = path.join(__dirname, 'L0Windows.js');
+            let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+            process.env["__command__"] = "Build services";
+            process.env["__composeFilePath__"] = "F:\\dir2\\vsoinjection-config-compose.yml";
+
+            await tr.runAsync();
+
+            assert(tr.succeeded, 'task should have succeeded');
+            // getCombinedConfig() execs with silent:true, so the sanitized outStream is never
+            // written to - compose stderr reaches the log only through the errline handler and
+            // tl.error(). tl.error() emits the marker inside its own ##vso[task.issue] line and
+            // escapes newlines, so this is defense in depth rather than an open hole, but the
+            // sanitization must not regress.
+            assert(tr.errorIssues.some(issue => issue.indexOf("#vso[task.setvariable variable=NODE_OPTIONS]--require /tmp/evil.js") != -1),
+                "compose config stderr should still be reported as an error issue");
+            assert(tr.errorIssues.every(issue => issue.indexOf("##vso[") == -1),
+                "no error issue should carry an unneutralized ##vso[ marker");
+        });
+
+        it('Runs successfully for windows docker compose push service', async () => {
             let tp = path.join(__dirname, 'L0Windows.js');
             let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
             process.env["__command__"] = "Push services";
-            tr.run();
+
+            await tr.runAsync();
 
             assert(tr.invokedToolCount == 1, 'should have invoked tool one times. actual: ' + tr.invokedToolCount);
             assert(tr.stderr.length == 0 || tr.errorIssues.length, 'should not have written to stderr');
             assert(tr.succeeded, 'task should have succeeded');
             assert(tr.stdout.indexOf("[command]docker push dir2_web") != -1, "docker compose push should run");
-            console.log(tr.stderr);
-            done();
         });
 
-        it('Runs successfully for windows docker compose run service', (done:Mocha.Done) => {
+        it('Runs successfully for windows docker compose run service', async() => {
             let tp = path.join(__dirname, 'L0Windows.js');
             let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
             process.env["__command__"] = "Run services";
-            tr.run();
 
+            await tr.runAsync();
+            
             assert(tr.invokedToolCount == 1, 'should have invoked tool three times. actual: ' + tr.invokedToolCount);
             assert(tr.stderr.length == 0 || tr.errorIssues.length, 'should not have written to stderr');
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.stdout.indexOf("[command]docker-compose -f F:\\dir2\\docker-compose.yml up") != -1, "docker compose push should run");
-            console.log(tr.stderr);
-            done();
+            assert(tr.stdout.indexOf("[command]" + composeCommand + " -f F:\\dir2\\docker-compose.yml up") != -1, "docker compose push should run");
         });
 
-        it('Runs successfully for windows docker compose push service with ACR', (done:Mocha.Done) => {
+        it('Runs successfully for windows docker compose push service with ACR', async () => {
             let tp = path.join(__dirname, 'L0Windows.js');
             let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
             process.env["__command__"] = "Push services";
             process.env["__container_type__"] = "Azure Container Registry";
             process.env["__qualifyImageNames__"] = "true";
-            tr.run();
-            
+
+            await tr.runAsync();
+
             assert(tr.invokedToolCount == 1, 'should have invoked tool one times. actual: ' + tr.invokedToolCount);
             assert(tr.stderr.length == 0 || tr.errorIssues.length, 'should not have written to stderr');
             assert(tr.succeeded, 'task should have succeeded');
             assert(tr.stdout.indexOf("[command]docker push ajgtestacr1.azurecr.io/dir2_web") != -1, "docker compose push should run");
-            console.log(tr.stderr);
-            done();
         });
 
-        it('Runs successfully for windows docker compose up command with ACR and additional docker compose file', (done:Mocha.Done) => {
+        it('Runs successfully for windows docker compose up command with ACR and additional docker compose file', async () => {
             let tp = path.join(__dirname, 'L0Windows.js');
             let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
             process.env["__command__"] = "Run a Docker Compose command";
             process.env["__container_type__"] = "Azure Container Registry";
             process.env["__additionalDockerComposeFiles__"] = "F:\\dir2\\docker-compose.override.yml";
             process.env["__dockerComposeCommand__"] = "up -d"
-            
-            tr.run();
-            
+
+            await tr.runAsync();
+
             assert(tr.invokedToolCount == 1, 'should have invoked tool one times. actual: ' + tr.invokedToolCount);
             assert(tr.stderr.length == 0 || tr.errorIssues.length, 'should not have written to stderr');
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.stdout.indexOf("[command]docker-compose -f F:\\dir2\\docker-compose.yml -f F:\\dir2\\docker-compose.override.yml up -d") != -1, "successfully ran up command");
-            console.log(tr.stderr);
-            done();
+            assert(tr.stdout.indexOf("[command]" + composeCommand + " -f F:\\dir2\\docker-compose.yml -f F:\\dir2\\docker-compose.override.yml up -d") != -1, "successfully ran up command");
         });
 
-        it('Runs successfully for windows docker compose up command with ACR and additional docker compose file not present warning', (done:Mocha.Done) => {
+        it('Runs successfully for windows docker compose up command with ACR and additional docker compose file not present warning', async () => {
             let tp = path.join(__dirname, 'L0Windows.js');
             let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
             process.env["__command__"] = "Run a Docker Compose command";
             process.env["__container_type__"] = "Azure Container Registry";
             process.env["__additionalDockerComposeFiles__"] = "F:\\dir2\\docker-compose.override-notpresent.yml";
             process.env["__dockerComposeCommand__"] = "up -d"
-            
-            tr.run();
-            
+
+            await tr.runAsync();
+
             assert(tr.invokedToolCount == 1, 'should have invoked tool one times. actual: ' + tr.invokedToolCount);
             assert(tr.stderr.length == 0 || tr.errorIssues.length, 'should not have written to stderr');
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.stdout.indexOf("[command]docker-compose -f F:\\dir2\\docker-compose.yml up -d") != -1, "successfully ran up command");
-            assert(tr.stdout.indexOf("vso[task.issue type=warning;]loc_mock_AdditionalDockerComposeFileDoesNotExists F:\\dir2\\docker-compose.override-notpresent.yml") != -1, "successfully identified missing override file.");
-            console.log(tr.stderr);
-            done();
+            assert(tr.stdout.indexOf("[command]" + composeCommand + " -f F:\\dir2\\docker-compose.yml up -d") != -1, "successfully ran up command");
+            assert(tr.stdout.indexOf("vso[task.issue type=warning;source=TaskInternal;]loc_mock_AdditionalDockerComposeFileDoesNotExists F:\\dir2\\docker-compose.override-notpresent.yml") != -1, "successfully identified missing override file.");
         });
 
-        it('Runs successfully for windows docker compose command with arguments', (done:Mocha.Done) => {
+        it('Runs successfully for windows docker compose command with arguments', async () => {
             let tp = path.join(__dirname, 'L0Windows.js');
             let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
             process.env["__command__"] = "Run a Docker Compose command";
             process.env["__container_type__"] = "Azure Container Registry"
             process.env["__dockerComposeCommand__"] = "pull"
             process.env["__arguments__"] = "service1 service2";
-            
-            tr.run();
-            
+
+            await tr.runAsync();
+
             assert(tr.invokedToolCount == 1, 'should have invoked tool one times. actual: ' + tr.invokedToolCount);
             assert(tr.stderr.length == 0 || tr.errorIssues.length, 'should not have written to stderr');
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.stdout.indexOf("[command]docker-compose -f F:\\dir2\\docker-compose.yml pull service1 service2") != -1, "docker compose <command> should run with arguments");
-            console.log(tr.stderr);
-            done();
+            assert(tr.stdout.indexOf("[command]" + composeCommand + " -f F:\\dir2\\docker-compose.yml pull service1 service2") != -1, "docker compose <command> should run with arguments");
         });
 
-        it('Runs successfully for windows docker compose up command with ACR and additional docker compose relative file path', (done:Mocha.Done) => {
+        it('Runs successfully for windows docker compose up command with ACR and additional docker compose relative file path', async () => {
             let tp = path.join(__dirname, 'L0Windows.js');
             let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
             process.env["__command__"] = "Run a Docker Compose command";
             process.env["__container_type__"] = "Azure Container Registry";
             process.env["__additionalDockerComposeFiles__"] = "docker-compose.override.yml";
             process.env["__dockerComposeCommand__"] = "up -d"
-            
-            tr.run();
-            
+
+            await tr.runAsync();
+
             assert(tr.invokedToolCount == 1, 'should have invoked tool one times. actual: ' + tr.invokedToolCount);
             assert(tr.stderr.length == 0 || tr.errorIssues.length, 'should not have written to stderr');
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.stdout.indexOf("[command]docker-compose -f F:\\dir2\\docker-compose.yml -f F:\\dir2\\docker-compose.override.yml up -d") != -1, "successfully ran up command");
-            console.log(tr.stderr);
-            done();
+            assert(tr.stdout.indexOf("[command]" + composeCommand + " -f F:\\dir2\\docker-compose.yml -f F:\\dir2\\docker-compose.override.yml up -d") != -1, "successfully ran up command");
         });
 
-        it('Runs successfully for windows docker compose service build with arguments', (done:Mocha.Done) => {
+        it('Runs successfully for windows docker compose service build with arguments', async () => {
             let tp = path.join(__dirname, 'L0Windows.js');
             let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
             process.env["__command__"] = "Build services";
             process.env["__arguments__"] = "--pull --parallel";
-            tr.run();
+
+            await tr.runAsync();
 
             assert(tr.invokedToolCount == 1, 'should have invoked tool one times. actual: ' + tr.invokedToolCount);
             assert(tr.stderr.length == 0 || tr.errorIssues.length, 'should not have written to stderr');
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.stdout.indexOf("[command]docker-compose -f F:\\dir2\\docker-compose.yml build --pull --parallel") != -1, "docker compose build should run with argumentss");
-            console.log(tr.stderr);
-            done();
+            assert(tr.stdout.indexOf("[command]" + composeCommand + " -f F:\\dir2\\docker-compose.yml build --pull --parallel") != -1, "docker compose build should run with argumentss");
         });
-
     } else {
-
-        it('Runs successfully for linux docker compose service build', (done:Mocha.Done) => {
+        it('Runs successfully for linux docker compose service build', async () => {
             let tp = path.join(__dirname, 'L0Linux.js');
             let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
             process.env["__command__"] = "Build services";
-            tr.run();
+
+            await tr.runAsync();
 
             assert(tr.invokedToolCount == 1, 'should have invoked tool one times. actual: ' + tr.invokedToolCount);
             assert(tr.stderr.length == 0 || tr.errorIssues.length, 'should not have written to stderr');
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.stdout.indexOf("[command]docker-compose -f /tmp/tempdir/100/docker-compose.yml build") != -1, "docker compose build should run");
-            console.log(tr.stderr);
-            done();
+            assert(tr.stdout.indexOf("[command]" + composeCommand + " -f /tmp/tempdir/100/docker-compose.yml build") != -1, "docker compose build should run");
         });
 
-        it('Runs successfully for linux docker compose service build, using user defined dcoker compose path', (done:Mocha.Done) => {
+        it('Runs successfully for linux docker compose service build, using user defined docker compose path', async () => {
             let tp = path.join(__dirname, 'L0Linux.js');
             let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
             process.env["__command__"] = "Build services";
             process.env["__dockerComposePath__"] = "docker-compose-userdefined";
-            tr.run();
+
+            await tr.runAsync();
 
             assert(tr.invokedToolCount == 1, 'should have invoked tool one times. actual: ' + tr.invokedToolCount);
             assert(tr.stderr.length == 0 || tr.errorIssues.length, 'should not have written to stderr');
             assert(tr.succeeded, 'task should have succeeded');
             assert(tr.stdout.indexOf("[command]docker-compose-userdefined -f /tmp/tempdir/100/docker-compose.yml build") != -1, "docker compose build should run");
-            console.log(tr.stderr);
-            done();
         });
 
-        it('Runs successfully for linux docker compose push service', (done:Mocha.Done) => {
+        it('Runs successfully for linux docker compose service build and neutralizes ##vso[ commands in output', async () => {
+            let tp = path.join(__dirname, 'L0Linux.js');
+            let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+            process.env["__command__"] = "Build services";
+            process.env["__composeFilePath__"] = "/tmp/tempdir/100/vsoinjection-compose.yml";
+
+            await tr.runAsync();
+
+            assert(tr.succeeded, 'task should have succeeded');
+            // Verifies createSanitizedExecOptions() is really wired into execCommandWithLogging:
+            // the console-visible build output (as the agent's log parser would see it) must
+            // have the ##vso[ marker neutralized to a single #.
+            assert(tr.stdout.indexOf("Step 1/2 : FROM node:18\n##vso[task.setvariable") == -1,
+                "##vso[ markers from attacker-controlled compose build output must be neutralized before reaching the log");
+            assert(tr.stdout.indexOf("Step 1/2 : FROM node:18\n#vso[task.setvariable variable=NODE_OPTIONS]--require /tmp/evil.js\nsucessfully built the service images") != -1,
+                "sanitized marker (single #) should still be present so the output stays readable");
+        });
+
+        it('Runs successfully for linux docker compose config and neutralizes ##vso[ commands on stderr', async () => {
+            let tp = path.join(__dirname, 'L0Linux.js');
+            let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+            process.env["__command__"] = "Build services";
+            process.env["__composeFilePath__"] = "/tmp/tempdir/100/vsoinjection-config-compose.yml";
+
+            await tr.runAsync();
+
+            assert(tr.succeeded, 'task should have succeeded');
+            // getCombinedConfig() execs with silent:true, so the sanitized outStream is never
+            // written to - compose stderr reaches the log only through the errline handler and
+            // tl.error(). tl.error() emits the marker inside its own ##vso[task.issue] line and
+            // escapes newlines, so this is defense in depth rather than an open hole, but the
+            // sanitization must not regress.
+            assert(tr.errorIssues.some(issue => issue.indexOf("#vso[task.setvariable variable=NODE_OPTIONS]--require /tmp/evil.js") != -1),
+                "compose config stderr should still be reported as an error issue");
+            assert(tr.errorIssues.every(issue => issue.indexOf("##vso[") == -1),
+                "no error issue should carry an unneutralized ##vso[ marker");
+        });
+
+        it('Runs successfully for linux docker compose push service', async () => {
             let tp = path.join(__dirname, 'L0Linux.js');
             let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
             process.env["__command__"] = "Push services";
-            tr.run();
+
+            await tr.runAsync();
 
             assert(tr.invokedToolCount == 1, 'should have invoked tool one times. actual: ' + tr.invokedToolCount);
             assert(tr.stderr.length == 0 || tr.errorIssues.length, 'should not have written to stderr');
             assert(tr.succeeded, 'task should have succeeded');
             assert(tr.stdout.indexOf("[command]docker push 100_web") != -1, "docker compose push should run");
-            console.log(tr.stderr);
-            done();
         });
 
-        it('Runs successfully for linux docker compose run service', (done:Mocha.Done) => {
+        it('Runs successfully for linux docker compose run service', async () => {
             let tp = path.join(__dirname, 'L0Linux.js');
             let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
             process.env["__command__"] = "Run services";
-            tr.run();
+
+            await tr.runAsync();
 
             assert(tr.invokedToolCount == 1, 'should have invoked tool three times. actual: ' + tr.invokedToolCount);
             assert(tr.stderr.length == 0 || tr.errorIssues.length, 'should not have written to stderr');
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.stdout.indexOf("[command]docker-compose -f /tmp/tempdir/100/docker-compose.yml up") != -1, "docker compose push should run");
-            console.log(tr.stderr);
-            done();
+            assert(tr.stdout.indexOf("[command]" + composeCommand + " -f /tmp/tempdir/100/docker-compose.yml up") != -1, "docker compose push should run");
         });
 
-        it('Runs successfully for linux docker compose push service with ACR', (done:Mocha.Done) => {
+        it('Runs successfully for linux docker compose push service with ACR', async () => {
             let tp = path.join(__dirname, 'L0Linux.js');
             let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
             process.env["__command__"] = "Push services";
             process.env["__container_type__"] = "Azure Container Registry";
             process.env["__qualifyImageNames__"] = "true";
-            tr.run();
-            
+
+            await tr.runAsync();
+
             assert(tr.invokedToolCount == 1, 'should have invoked tool one times. actual: ' + tr.invokedToolCount);
             assert(tr.stderr.length == 0 || tr.errorIssues.length, 'should not have written to stderr');
             assert(tr.succeeded, 'task should have succeeded');
             assert(tr.stdout.indexOf("[command]docker push ajgtestacr1.azurecr.io/100_web") != -1, "docker compose push should run");
-            console.log(tr.stderr);
-            done();
         });
 
-        it('Runs successfully for linux docker compose up command with ACR and additonal compose file', (done:Mocha.Done) => {
+        it('Runs successfully for linux docker compose up command with ACR and additonal compose file', async () => {
             let tp = path.join(__dirname, 'L0Linux.js');
             let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
             process.env["__command__"] = "Run a Docker Compose command";
@@ -266,17 +319,15 @@ describe('Docker Compose Suite', function() {
             process.env["__additionalDockerComposeFiles__"] = "/tmp/tempdir/100/docker-compose.override.yml";
             process.env["__dockerComposeCommand__"] = "up -d"
 
-            tr.run();
+            await tr.runAsync();
 
             assert(tr.invokedToolCount == 1, 'should have invoked tool one times. actual: ' + tr.invokedToolCount);
             assert(tr.stderr.length == 0 || tr.errorIssues.length, 'should not have written to stderr');
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.stdout.indexOf("[command]docker-compose -f /tmp/tempdir/100/docker-compose.yml -f /tmp/tempdir/100/docker-compose.override.yml up -d") != -1, "successfully ran up command");
-            console.log(tr.stderr);
-            done();
+            assert(tr.stdout.indexOf("[command]" + composeCommand + " -f /tmp/tempdir/100/docker-compose.yml -f /tmp/tempdir/100/docker-compose.override.yml up -d") != -1, "successfully ran up command");
         });
 
-        it('Runs successfully for linux docker compose up command with ACR and additonal compose file not present warning', (done:Mocha.Done) => {
+        it('Runs successfully for linux docker compose up command with ACR and additonal compose file not present warning', async () => {
             let tp = path.join(__dirname, 'L0Linux.js');
             let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
             process.env["__command__"] = "Run a Docker Compose command";
@@ -284,18 +335,16 @@ describe('Docker Compose Suite', function() {
             process.env["__additionalDockerComposeFiles__"] = "/tmp/tempdir/100/docker-compose.override-notpresent.yml";
             process.env["__dockerComposeCommand__"] = "up -d"
 
-            tr.run();
+            await tr.runAsync();
 
             assert(tr.invokedToolCount == 1, 'should have invoked tool one times. actual: ' + tr.invokedToolCount);
             assert(tr.stderr.length == 0 || tr.errorIssues.length, 'should not have written to stderr');
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.stdout.indexOf("[command]docker-compose -f /tmp/tempdir/100/docker-compose.yml up -d") != -1, "successfully ran up command");
-            assert(tr.stdout.indexOf("vso[task.issue type=warning;]loc_mock_AdditionalDockerComposeFileDoesNotExists /tmp/tempdir/100/docker-compose.override-notpresent.yml") != -1, "successfully identifed missing additional compose file.");
-            console.log(tr.stderr);
-            done();
+            assert(tr.stdout.indexOf("[command]" + composeCommand + " -f /tmp/tempdir/100/docker-compose.yml up -d") != -1, "successfully ran up command");
+            assert(tr.stdout.indexOf("vso[task.issue type=warning;source=TaskInternal;]loc_mock_AdditionalDockerComposeFileDoesNotExists /tmp/tempdir/100/docker-compose.override-notpresent.yml") != -1, "successfully identifed missing additional compose file.");
         });
 
-        it('Runs successfully for linux docker compose up command with ACR and additonal compose relative file path', (done:Mocha.Done) => {
+        it('Runs successfully for linux docker compose up command with ACR and additonal compose relative file path', async () => {
             let tp = path.join(__dirname, 'L0Linux.js');
             let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
             process.env["__command__"] = "Run a Docker Compose command";
@@ -303,32 +352,29 @@ describe('Docker Compose Suite', function() {
             process.env["__additionalDockerComposeFiles__"] = "docker-compose.override.yml";
             process.env["__dockerComposeCommand__"] = "up -d"
 
-            tr.run();
+            await tr.runAsync();
 
             assert(tr.invokedToolCount == 1, 'should have invoked tool one times. actual: ' + tr.invokedToolCount);
             assert(tr.stderr.length == 0 || tr.errorIssues.length, 'should not have written to stderr');
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.stdout.indexOf("[command]docker-compose -f /tmp/tempdir/100/docker-compose.yml -f /tmp/tempdir/100/docker-compose.override.yml up -d") != -1, "successfully ran up command");
-            console.log(tr.stderr);
-            done();
+            assert(tr.stdout.indexOf("[command]" + composeCommand + " -f /tmp/tempdir/100/docker-compose.yml -f /tmp/tempdir/100/docker-compose.override.yml up -d") != -1, "successfully ran up command");
         });
 
-        it('Runs successfully for linux docker compose service build with arguments', (done:Mocha.Done) => {
+        it('Runs successfully for linux docker compose service build with arguments', async () => {
             let tp = path.join(__dirname, 'L0Linux.js');
             let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
             process.env["__command__"] = "Build services";
             process.env["__arguments__"] = "--pull --parallel";
-            tr.run();
+
+            await tr.runAsync();
 
             assert(tr.invokedToolCount == 1, 'should have invoked tool one times. actual: ' + tr.invokedToolCount);
             assert(tr.stderr.length == 0 || tr.errorIssues.length, 'should not have written to stderr');
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.stdout.indexOf("[command]docker-compose -f /tmp/tempdir/100/docker-compose.yml build --pull --parallel") != -1, "docker compose build should run with argumentss");
-            console.log(tr.stderr);
-            done();
+            assert(tr.stdout.indexOf("[command]" + composeCommand + " -f /tmp/tempdir/100/docker-compose.yml build --pull --parallel") != -1, "docker compose build should run with argumentss");
         });
 
-        it('Runs successfully for linux docker compose command with arguments', (done:Mocha.Done) => {
+        it('Runs successfully for linux docker compose command with arguments', async () => {
             let tp = path.join(__dirname, 'L0Linux.js');
             let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
             process.env["__command__"] = "Run a Docker Compose command";
@@ -336,14 +382,12 @@ describe('Docker Compose Suite', function() {
             process.env["__dockerComposeCommand__"] = "pull"
             process.env["__arguments__"] = "service1 service2";
             
-            tr.run();
-            
+            await tr.runAsync();
+
             assert(tr.invokedToolCount == 1, 'should have invoked tool one times. actual: ' + tr.invokedToolCount);
             assert(tr.stderr.length == 0 || tr.errorIssues.length, 'should not have written to stderr');
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.stdout.indexOf("[command]docker-compose -f /tmp/tempdir/100/docker-compose.yml pull service1 service2") != -1, "docker compose <command> should run with arguments");
-            console.log(tr.stderr);
-            done();
+            assert(tr.stdout.indexOf("[command]" + composeCommand + " -f /tmp/tempdir/100/docker-compose.yml pull service1 service2") != -1, "docker compose <command> should run with arguments");
         });
     }
 });

@@ -4,6 +4,8 @@
   "description": "Azure Pipelines Xamarin iOS Task",
   "main": "xamarinios.js",
   "scripts": {
+    "build": "node ../../make.js build --task XamariniOSV2",
+    "serverBuild": "node ../../make.js serverBuild --task XamariniOSV2",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -18,12 +20,12 @@
   "homepage": "https://github.com/Microsoft/azure-pipelines-tasks#readme",
   "dependencies": {
     "@types/mocha": "^5.2.7",
-    "@types/node": "^10.17.0",
+    "@types/node": "^20.3.1",
     "@types/uuid": "^8.3.0",
-    "azure-pipelines-task-lib": "^3.1.2",
-    "azure-pipelines-tasks-msbuildhelpers": "^2.0.0-preview.0"
+    "azure-pipelines-task-lib": "^5.280.3",
+    "azure-pipelines-tasks-msbuildhelpers": "^3.281.0"
   },
   "devDependencies": {
-    "typescript": "4.0.2"
+    "typescript": "5.1.6"
   }
 }

@@ -34,6 +34,8 @@ $ErrorActionPreference = 'Stop'
 # Initialize Rest API Helpers.
 Import-Module $PSScriptRoot\ps_modules\VstsAzureHelpers_
 Import-Module $PSScriptRoot\ps_modules\VstsAzureRestHelpers_
+Import-Module $PSScriptRoot\ps_modules\Sanitizer
+Import-Module $PSScriptRoot\ps_modules\ExternalOutputSanitizer
 
 # Import the loc strings.
 Import-VstsLocStrings -LiteralPath $PSScriptRoot/Task.json
@@ -58,7 +60,7 @@ try {
     # Telemetry for endpoint id
     $encodedServerName = GetSHA256String($serverName)
     $encodedDatabaseName = GetSHA256String($databaseName)
-    $telemetryJsonContent = -join ("{`"endpointId`":`"$connectedServiceName`",", 
+    $telemetryJsonContent = -join ("{`"endpointId`":`"$connectedServiceName`",",
         "`"subscriptionId`":`"$subscriptionId`",",
         "`"serverName`": `"$encodedServerName`",",
         "`"databaseName`": `"$encodedDatabaseName`"}")
@@ -101,7 +103,8 @@ try {
         $dbDns = $endpoint.Data.sqlDatabaseDnsSuffix
         $dbDns = $dbDns.Trim(".")
         $dbUrl = (New-Object -TypeName UriBuilder -ArgumentList @("https", $dbDns)).Uri
-        $accessToken = (Get-AzureRMAccessToken -endpoint $endpoint -overrideResourceType $dbUrl).access_token
+        $token = Get-AzureRMAccessToken -endpoint $endpoint -connectedServiceNameARM $connectedServiceName -overrideResourceType $dbUrl
+        $accessToken = $token.access_token
     }
 
     # Checks for the very basic consistency of the Server Name
@@ -112,7 +115,10 @@ try {
         throw (Get-VstsLocString -Key "SAD_InvalidDeploymentActionForSQLOperations" -ArgumentList $deploymentAction)
     }
 
-    $firewallRuleName, $isFirewallConfigured = Add-FirewallRule -endpoint $endpoint -authenticationType $authenticationType -serverName $serverName -databaseName $databaseName -sqlUsername $sqlUsername -sqlPassword $sqlPassword -connectionString $connectionString -ipDetectionMethod $ipDetectionMethod -startIPAddress $startIpAddress -endIPAddress $endIpAddress -token $accessToken
+    $firewallRuleName, $isFirewallConfigured = Add-FirewallRule -endpoint $endpoint -authenticationType $authenticationType -serverName $serverName `
+        -databaseName $databaseName -sqlUsername $sqlUsername -sqlPassword $sqlPassword -connectionString $connectionString `
+        -ipDetectionMethod $ipDetectionMethod -startIPAddress $startIpAddress -endIPAddress $endIpAddress -token $accessToken `
+        -connectedServiceNameARM $connectedServiceName
 
     $firewallConfigWaitTime = $env:SqlFirewallConfigWaitTime
 
@@ -126,14 +132,16 @@ try {
     Start-Sleep -Seconds $firewallConfigWaitTime
 
     if (@("Extract", "Export", "DriftReport", "DeployReport", "Script") -contains $deploymentAction) {
-        # Create the directory for output files
+        # Create the directory for output files if it does not already exist.
+        # Do not delete any existing files to avoid destroying outputs from previous steps.
         $generatedOutputFilesRoot = "$ENV:SYSTEM_DEFAULTWORKINGDIRECTORY\GeneratedOutputFiles"
-        if (Test-Path $generatedOutputFilesRoot) {
-            Remove-Item -Path $generatedOutputFilesRoot -Recurse -Force
+        if (-not (Test-Path $generatedOutputFilesRoot -PathType Container)) {
+            if (Test-Path $generatedOutputFilesRoot) {
+                Remove-Item -Path $generatedOutputFilesRoot -Force
+            }
+            Write-Verbose "Creating output files directory: $generatedOutputFilesRoot"
+            New-Item -Path $generatedOutputFilesRoot -ItemType Directory | Out-Null
         }
-
-        Write-Verbose "Creating output files directory: $generatedOutputFilesRoot"
-        New-Item -Path $generatedOutputFilesRoot -ItemType Directory | Out-Null
     }
 
     switch ($taskNameSelector) {
@@ -212,10 +220,10 @@ catch [Exception] {
     }
 
     if ($deploymentAction -eq "DriftReport" -and $LASTEXITCODE -eq 1) {
-        $errorMessage += Get-VstsLocString -Key "SAD_DriftReportWarning"
+        $errorMessage += " " + (Get-VstsLocString -Key "SAD_DriftReportWarning")
     }
 
-    $errorMessage += Get-VstsLocString -Key "SAD_TroubleshootingLink"
+    $errorMessage += " " + (Get-VstsLocString -Key "SAD_TroubleshootingLink")
 
     throw $errorMessage
 }
@@ -226,7 +234,7 @@ finally {
         Write-Verbose "Deleting $firewallRuleName"
         $serverFriendlyName = $serverName.split(".")[0]
         Delete-AzureSqlDatabaseServerFirewallRule -serverName $serverFriendlyName -firewallRuleName $firewallRuleName -endpoint $endpoint `
-            -isFirewallConfigured $isFirewallConfigured -deleteFireWallRule $deleteFirewallRule
+            -isFirewallConfigured $isFirewallConfigured -deleteFireWallRule $deleteFirewallRule -connectedServiceNameARM $connectedServiceName
     }
     else {
         Write-Verbose "No Firewall Rule was added"

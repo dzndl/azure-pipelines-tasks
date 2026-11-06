@@ -23,6 +23,8 @@ const linuxFunctionRuntimeSettingValue = new Map([
     [ 'NODE|10', 'node ' ],
     [ 'NODE|12', 'node ' ],
     [ 'NODE|14', 'node ' ],
+    [ 'NODE|20', 'node ' ],
+    [ 'NODE|22', 'node ' ],
     [ 'PYTHON|3.6', 'python '],
     [ 'PYTHON|3.7', 'python '],
     [ 'PYTHON|3.8', 'python ']
@@ -60,10 +62,12 @@ export class BuiltInLinuxWebAppDeploymentProvider extends AzureRmWebAppDeploymen
                 tl.debug("Compressed folder into zip " +  archivedWebPackage);
                 this.zipDeploymentID = await this.kuduServiceUtility.deployUsingZipDeploy(archivedWebPackage, this.taskParams.TakeAppOfflineFlag, 
                     { slotName: this.appService.getSlot() });
+                    
             break;
             case PackageType.zip:
                 this.zipDeploymentID = await this.kuduServiceUtility.deployUsingZipDeploy(this.taskParams.Package.getPath(), this.taskParams.TakeAppOfflineFlag, 
                 { slotName: this.appService.getSlot() });
+                
             break;
 
             case PackageType.jar:
@@ -74,6 +78,7 @@ export class BuiltInLinuxWebAppDeploymentProvider extends AzureRmWebAppDeploymen
                 tl.debug("Initiated deployment via kudu service for webapp jar package : "+ webPackage);
                 this.zipDeploymentID = await this.kuduServiceUtility.deployUsingZipDeploy(webPackage, this.taskParams.TakeAppOfflineFlag, 
                 { slotName: this.appService.getSlot() });
+               
             break;
 
             case PackageType.war:
@@ -81,6 +86,7 @@ export class BuiltInLinuxWebAppDeploymentProvider extends AzureRmWebAppDeploymen
                 var warName = webCommonUtility.getFileNameFromPath(this.taskParams.Package.getPath(), ".war");
                 this.zipDeploymentID = await this.kuduServiceUtility.deployUsingWarDeploy(this.taskParams.Package.getPath(), 
                 { slotName: this.appService.getSlot() }, warName);
+               
             break;
 
             default:

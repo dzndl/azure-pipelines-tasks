@@ -1,13 +1,14 @@
-import * as auth from "packaging-common/nuget/Authentication";
-import * as ngToolRunner from "packaging-common/nuget/NuGetToolRunner2";
-import * as nutil from "packaging-common/nuget/Utility";
+import * as auth from "azure-pipelines-tasks-packaging-common/nuget/Authentication";
+import * as ngToolRunner from "azure-pipelines-tasks-packaging-common/nuget/NuGetToolRunner2";
+import * as nutil from "azure-pipelines-tasks-packaging-common/nuget/Utility";
 import * as tl from "azure-pipelines-task-lib/task";
-import { logError } from 'packaging-common/util';
+import { logError } from 'azure-pipelines-tasks-packaging-common/util';
 
-import peParser = require("packaging-common/pe-parser/index");
-import * as pkgLocationUtils from "packaging-common/locationUtilities";
-import * as telemetry from "utility-common/telemetry";
-import {IExecSyncResult} from "azure-pipelines-task-lib/toolrunner";
+import peParser = require("azure-pipelines-tasks-packaging-common/pe-parser/index");
+import * as pkgLocationUtils from "azure-pipelines-tasks-packaging-common/locationUtilities";
+import * as telemetry from "azure-pipelines-tasks-utility-common/telemetry";
+import { IExecOptions } from "azure-pipelines-task-lib/toolrunner";
+import { getVersionFallback } from "azure-pipelines-tasks-packaging-common/nuget/ProductVersionHelper";
 
 class NuGetExecutionOptions {
     constructor(
@@ -36,8 +37,8 @@ export async function run(nuGetPath: string): Promise<void> {
     const args: string = tl.getInput("arguments", false);
 
     const version = await peParser.getFileVersionInfoAsync(nuGetPath);
-    if(version.productVersion.a < 3 || (version.productVersion.a <= 3 && version.productVersion.b < 5))
-    {
+    const parsedVersion = getVersionFallback(version);
+    if (parsedVersion.a < 3 || (parsedVersion.a <= 3 && parsedVersion.b < 5)) {
         tl.setResult(tl.TaskResult.Failed, tl.loc("Info_NuGetSupportedAfter3_5", version.strings.ProductVersion));
         return;
     }
@@ -83,7 +84,7 @@ export async function run(nuGetPath: string): Promise<void> {
             args,
             authInfo);
 
-        runNuGet(executionOptions);
+        await runNuGet(executionOptions);
     } catch (err) {
         tl.error(err);
 
@@ -95,7 +96,7 @@ export async function run(nuGetPath: string): Promise<void> {
     }
 }
 
-function runNuGet(executionOptions: NuGetExecutionOptions): IExecSyncResult {
+async function runNuGet(executionOptions: NuGetExecutionOptions): Promise<number> {
     const nugetTool = ngToolRunner.createNuGetToolRunner(
         executionOptions.nuGetPath,
         executionOptions.environment,
@@ -103,12 +104,23 @@ function runNuGet(executionOptions: NuGetExecutionOptions): IExecSyncResult {
     nugetTool.line(executionOptions.args);
     nugetTool.arg("-NonInteractive");
 
-    const execResult = nugetTool.execSync();
-    if (execResult.code !== 0) {
-        telemetry.logResult("Packaging", "NuGetCommand", execResult.code);
+    // Listen for stderr output to write timeline results for the build.
+    let stdErrText = "";
+    nugetTool.on('stderr', (data: Buffer) => {
+        stdErrText += data.toString('utf-8');
+    });
+
+    const execResult = await nugetTool.exec({
+        ignoreReturnCode: true,
+        externalOutput: { source: "childProcess" }
+    } as IExecOptions);
+
+    if (execResult !== 0) {
+        telemetry.logResult("Packaging", "NuGetCommand", execResult);
         throw tl.loc("Error_NugetFailedWithCodeAndErr",
-            execResult.code,
-            execResult.stderr ? execResult.stderr.trim() : execResult.stderr);
+            execResult,
+            stdErrText.trim());
     }
+
     return execResult;
 }

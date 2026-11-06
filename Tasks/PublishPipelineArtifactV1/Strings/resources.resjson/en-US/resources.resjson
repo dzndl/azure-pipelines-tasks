@@ -1,5 +1,5 @@
 {
-  "loc.friendlyName": "Publish pipeline artifact",
+  "loc.friendlyName": "Publish Pipeline Artifacts",
   "loc.helpMarkDown": "Publish (upload) a file or directory as a named artifact for the current run. Published artifacts can be downloaded in other jobs, stages, or pipelines using the \"Download pipeline artifact\" task.",
   "loc.description": "Publish (upload) a file or directory as a named artifact for the current run",
   "loc.instanceNameFormat": "Publish Pipeline Artifact",
@@ -14,5 +14,7 @@
   "loc.input.label.parallel": "Parallel copy",
   "loc.input.help.parallel": "Select whether to copy files in parallel using multiple threads for greater potential throughput. If this setting is not enabled, one thread will be used.",
   "loc.input.label.parallelCount": "Parallel count",
-  "loc.input.help.parallelCount": "Enter the degree of parallelism, or number of threads used, to perform the copy. The value must be at least 1 and not greater than 128."
+  "loc.input.help.parallelCount": "Enter the degree of parallelism, or number of threads used, to perform the copy. The value must be at least 1 and not greater than 128.",
+  "loc.input.label.properties": "Custom properties",
+  "loc.input.help.properties": "Enter custom properties to associate with the artifact. Valid JSON string expected with all keys having the prefix 'user-'"
 }

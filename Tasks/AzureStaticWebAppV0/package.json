@@ -4,17 +4,19 @@
   "description": "Build and deploy an Azure Static Web App",
   "main": "index.js",
   "scripts": {
+    "build": "node ../../make.js build --task AzureStaticWebAppV0",
+    "serverBuild": "node ../../make.js serverBuild --task AzureStaticWebAppV0",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@types/node": "^10.17.0",
-    "azure-pipelines-task-lib": "^2.11.3",
-    "azure-pipelines-tasks-docker-common-v2": "^1.177.0",
-    "vso-task-lib": "^0.5.5"
+    "@types/node": "^24.10.0",
+    "agent-base": "6.0.2",
+    "azure-pipelines-task-lib": "^5.281.1",
+    "azure-pipelines-tasks-docker-common": "^2.281.0"
   },
   "devDependencies": {
-    "typescript": "4.0.2"
+    "typescript": "^5.7.2"
   }
 }

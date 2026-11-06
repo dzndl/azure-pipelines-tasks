@@ -7,7 +7,10 @@ $AzureFileCopyRemoteJob = {
         [string]$azCopyToolFileNamesString,
         [string]$azCopyToolFileContentsString,
         [switch]$CleanTargetBeforeCopy,
-        [switch]$EnableDetailedLogging
+        [switch]$EnableDetailedLogging,
+        [switch]$useSanitizerActivate,
+        [switch]$useSourcePathHardening,
+        [switch]$disableTargetPathHardening
     )
 
     function Write-DetailLogs
@@ -21,6 +24,21 @@ $AzureFileCopyRemoteJob = {
         {
             Write-Verbose $message
         }
+    }
+
+    function Split-AdditionalArguments
+    {
+        # Split-AdditionalArguments-Placeholder
+    }
+
+    # Expand only environment references, once; their values are never evaluated as PowerShell.
+    function Expand-EnvironmentReferences
+    {
+        param([string]$text)
+
+        return [regex]::Replace($text,
+            '(?i)\$(?:env:(?<n>[A-Za-z_][A-Za-z0-9_]*)|\{env:(?<n>[^}]+)\})',
+            { param($m) [string][Environment]::GetEnvironmentVariable($m.Groups['n'].Value) })
     }
 
     function Write-LogsAndCleanup
@@ -118,10 +136,28 @@ $AzureFileCopyRemoteJob = {
             $additionalArguments = "/Z:`"$azCopyDestinationPath`" /V:`"$logFilePath`" /S /Y"
         }
 
-        Write-DetailLogs "##[command] & `"$azCopyExeLocation`" /Source:`"$containerURL`" /Dest:`"$targetPath`" /SourceSAS:`"*****`" $additionalArguments"
-
-        $azCopyCommand = "& `"$azCopyExeLocation`" /Source:`"$containerURL`" /Dest:`"$targetPath`" /SourceSAS:`"$containerSasToken`" $additionalArguments"
-        Invoke-Expression $azCopyCommand
+        if ($useSourcePathHardening) {
+            $sanitizedArguments = @(Split-AdditionalArguments -additionalArguments $additionalArguments)
+            Write-DetailLogs "##[command] & `"$azCopyExeLocation`" /Source:`"$containerURL`" /Dest:`"$targetPath`" /SourceSAS:`"*****`" $sanitizedArguments"
+            & "$azCopyExeLocation" /Source:"$containerURL" /Dest:"$targetPath" /SourceSAS:"$containerSasToken" @sanitizedArguments
+        } elseif ($useSanitizerActivate) {
+            # Splitting arguments on space, but not on space inside quotes
+            $sanitizedArguments = [regex]::Split($additionalArguments, ' (?=(?:[^"]|"[^"]*")*$)')
+            Write-DetailLogs "##[command] & `"$azCopyExeLocation`" /Source:`"$containerURL`" /Dest:`"$targetPath`" /SourceSAS:`"*****`" $sanitizedArguments"
+            & "$azCopyExeLocation" /Source:"$containerURL" /Dest:"$targetPath" /SourceSAS:"$containerSasToken" $sanitizedArguments
+        } elseif (-not $disableTargetPathHardening) {
+            # Keep v8 options as individual argv values, never re-parsed as PowerShell.
+            $expandedTargetPath = Expand-EnvironmentReferences $targetPath
+            [string[]]$argumentTokens = @(@(Split-AdditionalArguments -additionalArguments $additionalArguments) |
+                ForEach-Object { Expand-EnvironmentReferences $_ })
+            [string[]]$azCopyArguments = @("/Source:$containerURL", "/Dest:$expandedTargetPath", "/SourceSAS:$containerSasToken") + $argumentTokens
+            Write-DetailLogs "##[command] & `"$azCopyExeLocation`" /Source:`"$containerURL`" /Dest:`"$expandedTargetPath`" /SourceSAS:`"*****`" $argumentTokens"
+            & "$azCopyExeLocation" @azCopyArguments
+        } else {
+            Write-DetailLogs "##[command] & `"$azCopyExeLocation`" /Source:`"$containerURL`" /Dest:`"$targetPath`" /SourceSAS:`"*****`" $additionalArguments"
+            $azCopyCommand = "& `"$azCopyExeLocation`" /Source:`"$containerURL`" /Dest:`"$targetPath`" /SourceSAS:`"$containerSasToken`" $additionalArguments"
+            Invoke-Expression $azCopyCommand
+        }
     }
     catch
     {

@@ -9,12 +9,28 @@ import { IExecOptions } from 'azure-pipelines-task-lib/toolrunner';
 import { NuGetConfigHelper2 } from 'azure-pipelines-tasks-packaging-common/nuget/NuGetConfigHelper2';
 import * as ngRunner from 'azure-pipelines-tasks-packaging-common/nuget/NuGetToolRunner2';
 import * as pkgLocationUtils from 'azure-pipelines-tasks-packaging-common/locationUtilities';
+import { RequestOptions } from 'azure-pipelines-tasks-packaging-common/universal/RequestUtilities';
 import { getProjectAndFeedIdFromInputParam, logError } from 'azure-pipelines-tasks-packaging-common/util';
+import { WebRequest, WebRequestOptions, sendRequest } from 'azure-pipelines-tasks-utility-common/restutilities';
+import { getRequestTimeout } from './Common/utility';
+
+interface EndpointCredentials {
+    endpoint: string;
+    username?: string;
+    password: string;
+}
 
 export async function run(): Promise<void> {
     let packagingLocation: pkgLocationUtils.PackagingLocation;
     try {
-        packagingLocation = await pkgLocationUtils.getPackagingUris(pkgLocationUtils.ProtocolType.NuGet);
+        const timeout: number = getRequestTimeout();
+        const webApiOptions: RequestOptions = { 
+            socketTimeout: timeout,
+            globalAgentOptions: {
+                timeout: timeout,
+            } 
+        };
+        packagingLocation = await pkgLocationUtils.getPackagingUris(pkgLocationUtils.ProtocolType.NuGet, webApiOptions);
     } catch (error) {
         tl.debug('Unable to get packaging URIs');
         logError(error);
@@ -65,13 +81,13 @@ export async function run(): Promise<void> {
         }
 
         // Setting up auth info
-        const accessToken = pkgLocationUtils.getSystemAccessToken();
+        let accessToken;
         const isInternalFeed: boolean = nugetFeedType === 'internal';
+        accessToken = await getAccessToken(isInternalFeed, urlPrefixes);
         const internalAuthInfo = new auth.InternalAuthInfo(urlPrefixes, accessToken, /*useCredProvider*/ null, true);
 
         let configFile = null;
         let apiKey: string;
-        let credCleanup = () => { return; };
 
         // dotnet nuget push does not currently accept a --config-file parameter
         // so we are going to work around this by creating a temporary working directory for dotnet with
@@ -79,6 +95,11 @@ export async function run(): Promise<void> {
         const tempNuGetConfigDirectory = path.join(NuGetConfigHelper2.getTempNuGetConfigBasePath(), 'NuGet_' + tl.getVariable('build.buildId'));
         const tempNuGetPath = path.join(tempNuGetConfigDirectory, 'nuget.config');
         tl.mkdirP(tempNuGetConfigDirectory);
+        let credCleanup = () => {
+            if (tl.exist(tempNuGetConfigDirectory)) {
+                tl.rmRF(tempNuGetConfigDirectory)
+            }
+        };
 
         let feedUri: string = undefined;
 
@@ -100,7 +121,6 @@ export async function run(): Promise<void> {
             feedUri = await nutil.getNuGetFeedRegistryUrl(packagingLocation.DefaultPackagingUri, feed.feedId, feed.projectId, null, accessToken, /* useSession */ true);
             nuGetConfigHelper.addSourcesToTempNuGetConfig([<auth.IPackageSource>{ feedName: feed.feedId, feedUri: feedUri, isInternal: true }]);
             configFile = nuGetConfigHelper.tempNugetConfigPath;
-            credCleanup = () => { tl.rmRF(tempNuGetConfigDirectory); };
 
             apiKey = 'VSTS';
         } else {
@@ -124,7 +144,6 @@ export async function run(): Promise<void> {
             nuGetConfigHelper.addSourcesToTempNuGetConfig([externalAuth.packageSource]);
             feedUri = externalAuth.packageSource.feedUri;
             configFile = nuGetConfigHelper.tempNugetConfigPath;
-            credCleanup = () => { tl.rmRF(tempNuGetConfigDirectory); };
 
             const authType: auth.ExternalAuthType = externalAuth.authType;
             switch (authType) {
@@ -181,4 +200,108 @@ function dotNetNuGetPushAsync(dotnetPath: string, packageFile: string, feedUri: 
     // dotnet.exe v1 and v2 do not accept the --verbosity parameter for the "nuget push"" command, although it does for other commands
     const envWithProxy = ngRunner.setNuGetProxyEnvironment(process.env, /*configFile*/ null, feedUri);
     return dotnet.exec({ cwd: workingDirectory, env: envWithProxy } as IExecOptions);
+}
+
+async function getAccessToken(isInternalFeed: boolean, uriPrefixes: any): Promise<string> {
+    let accessToken: string;
+    let allowServiceConnection = tl.getVariable('PUBLISH_VIA_SERVICE_CONNECTION');
+
+    if (allowServiceConnection) {
+        let endpoint = tl.getInput('externalEndpoint', false);
+
+        if (endpoint && isInternalFeed === true) {
+            tl.debug("Found external endpoint, will use token for auth");
+            let endpointAuth = tl.getEndpointAuthorization(endpoint, true);
+            let endpointScheme = tl.getEndpointAuthorizationScheme(endpoint, true).toLowerCase();
+            switch (endpointScheme) {
+                case ("token"):
+                    accessToken = endpointAuth.parameters["apitoken"];
+                    break;
+                default:
+                    tl.warning(tl.loc("Warning_UnsupportedServiceConnectionAuth"));
+                    break;
+            }
+        }
+        if (!accessToken && isInternalFeed === true) {
+            tl.debug("Checking for auth from Cred Provider.");
+            const feed = getProjectAndFeedIdFromInputParam('feedPublish');
+            const JsonEndpointsString = process.env["VSS_NUGET_EXTERNAL_FEED_ENDPOINTS"];
+
+            if (JsonEndpointsString) {
+                tl.debug(`Feed details ${feed.feedId} ${feed.projectId}`);
+                tl.debug(`Endpoints found: ${JsonEndpointsString}`);
+
+                let endpointsArray: { endpointCredentials: EndpointCredentials[] } = JSON.parse(JsonEndpointsString);
+                let matchingEndpoint: EndpointCredentials;
+                for (const e of endpointsArray.endpointCredentials) {
+                    for (const prefix of uriPrefixes) {
+                        if (e.endpoint.toUpperCase().startsWith(prefix.toUpperCase())) {
+                            let isServiceConnectionValid = await tryServiceConnection(e, feed);
+                            if (isServiceConnectionValid) {
+                                matchingEndpoint = e;
+                                break;
+                            }
+                        }
+                    }
+                    if (matchingEndpoint) {
+                        accessToken = matchingEndpoint.password;
+                        break;
+                    }
+                }
+            }
+        }
+        if (accessToken) {
+            return accessToken;
+        }
+    }
+
+    tl.debug('Defaulting to use the System Access Token.');
+    accessToken = pkgLocationUtils.getSystemAccessToken();
+    return accessToken;
+}
+
+async function tryServiceConnection(endpoint: EndpointCredentials, feed: any): Promise<boolean> {
+    // Create request
+    const request = new WebRequest();
+    const token64 = Buffer.from(`${endpoint.username}:${endpoint.password}`).toString('base64');
+    request.uri = endpoint.endpoint;
+    request.method = 'GET';
+    request.headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Basic " + token64
+    };
+
+    const timeout: number = getRequestTimeout();
+    const retriableErrorCodes = ["ETIMEDOUT", "ECONNRESET", "ENOTFOUND", "ESOCKETTIMEDOUT", "ECONNREFUSED", "EHOSTUNREACH", "EPIPE", "EA_AGAIN"];
+    const retriableStatusCodes = [408, 409, 500, 502, 503, 504];
+
+    const options: WebRequestOptions = {
+        retryCount: 3,
+        retryIntervalInSeconds: 5,
+        retriableErrorCodes,
+        retriableStatusCodes,
+        retryRequestTimedout: true,
+        socketTimeout: timeout,
+        httpGlobalAgentOptions: {
+            timeout: timeout
+        }
+    };
+
+    const response = await sendRequest(request, options);
+
+    if (response.statusCode == 200) {
+        if (response.body) {
+            for (const entry of response.body.resources) {
+                if (entry['@type'] === 'AzureDevOpsProjectId' && !(entry['label'].toUpperCase() === feed.projectId.toUpperCase() || entry['@id'].toUpperCase().endsWith(feed.projectId.toUpperCase()))) {
+                    return false;
+                }
+                if (entry['@type'] === 'VssFeedId' && !(entry['label'].toUpperCase() === feed.feedId.toUpperCase() || entry['@id'].toUpperCase().endsWith(feed.feedId.toUpperCase()))) {
+                    return false;
+                }
+            }
+            // We found matches in feedId and projectId, return the service connection
+            return true;
+        }
+    }
+    return false;
 }

@@ -9,9 +9,11 @@ import fileEncoding = require('./FileEncoding');
 import { TemplateObject, ParameterValue } from "../models/Types";
 import httpInterfaces = require("typed-rest-client/Interfaces");
 import { DeploymentParameters } from "./DeploymentParameters";
+import { IExecSyncResult } from 'azure-pipelines-task-lib/toolrunner';
+import { setAzureCloudBasedOnServiceEndpoint, loginAzureRM } from 'azure-pipelines-tasks-azure-arm-rest/azCliUtility';
+import { v4 as uuidv4 } from "uuid";
 
 var hm = require("typed-rest-client/HttpClient");
-var uuid = require("uuid");
 
 let proxyUrl: string = tl.getVariable("agent.proxyurl");
 var requestOptions: httpInterfaces.IRequestOptions = proxyUrl ? {
@@ -33,6 +35,8 @@ function formatNumber(num: number): string {
 }
 
 class Utils {
+    public static cleanupFileList = []
+
     public static isNonEmpty(str: string): boolean {
         return (!!str && !!str.trim());
     }
@@ -207,7 +211,7 @@ class Utils {
         name = path.basename(name).split(".")[0].replace(/\s/g, "");
         name = name.substr(0, 40);
         var timestamp = new Date(Date.now());
-        var uniqueId = uuid().substr(0, 4);
+        var uniqueId = uuidv4().substr(0, 4);
         var suffix = util.format("%s%s%s-%s%s%s-%s", timestamp.getFullYear(),
             formatNumber(timestamp.getMonth() + 1),
             formatNumber(timestamp.getDate()),
@@ -222,7 +226,7 @@ class Utils {
         return deploymentName;
     }
 
-    public static getDeploymentDataForLinkedArtifact(taskParameters: armDeployTaskParameters.TaskParameters): DeploymentParameters {
+    public static async getDeploymentDataForLinkedArtifact(taskParameters: armDeployTaskParameters.TaskParameters): Promise<DeploymentParameters> {
         var template: TemplateObject;
         var fileMatches = tl.findMatch(tl.getVariable("System.DefaultWorkingDirectory"), this.escapeBlockCharacters(taskParameters.csmFile));
         if (fileMatches.length > 1) {
@@ -234,6 +238,7 @@ class Utils {
         var csmFilePath = fileMatches[0];
         if (!fs.lstatSync(csmFilePath).isDirectory()) {
             tl.debug("Loading CSM Template File.. " + csmFilePath);
+            csmFilePath = await this.getFilePathForLinkedArtifact(csmFilePath, taskParameters)
             try {
                 template = JSON.parse(this.stripJsonComments(fileEncoding.readFileContentsAsText(csmFilePath)));
             }
@@ -257,6 +262,7 @@ class Utils {
             var csmParametersFilePath = fileMatches[0];
             if (!fs.lstatSync(csmParametersFilePath).isDirectory()) {
                 tl.debug("Loading Parameters File.. " + csmParametersFilePath);
+                csmParametersFilePath = await this.getFilePathForLinkedArtifact(csmParametersFilePath, taskParameters)
                 try {
                     var parameterFile = JSON.parse(this.stripJsonComments(fileEncoding.readFileContentsAsText(csmParametersFilePath)));
                     tl.debug("Loaded Parameters File");
@@ -283,6 +289,16 @@ class Utils {
         });
         deploymentParameters.updateCommonProperties(taskParameters.deploymentMode);
         return deploymentParameters;
+    }
+
+    public static deleteGeneratedFiles(): void{
+        this.cleanupFileList.forEach(filePath => {
+            try{
+                fs.unlinkSync(filePath);
+            }catch(err){
+                console.log(tl.loc("BicepFileCleanupFailed", err))
+            }
+        });
     }
 
     private static getPolicyHelpLink(taskParameters: armDeployTaskParameters.TaskParameters, errorDetail) {
@@ -352,7 +368,12 @@ class Utils {
             }
 
             try {
-                overrideParameter.value = this.castToType(overrideParameter.value, template.parameters[overrideParameter.name].type);
+                if (template.parameters[overrideParameter.name] === undefined) {
+                    tl.error(tl.loc("ErrorWhileOverrideParameterUndefined", taskParameters.csmFile, overrideParameter.name));
+                }
+                else {
+                    overrideParameter.value = this.castToType(overrideParameter.value, template.parameters[overrideParameter.name].type);
+                }
             } catch (error) {
                 console.log(tl.loc("ErrorWhileParsingParameter", overrideParameter.name, error.toString()));
             }
@@ -406,6 +427,119 @@ class Utils {
 
     private static escapeBlockCharacters(str: string): string {
         return str.replace(/[\[]/g, '$&[]');
+    }
+
+    private static async getFilePathForLinkedArtifact(filePath: string, taskParameters: armDeployTaskParameters.TaskParameters): Promise<string> {
+        var filePathExtension: string = filePath.split('.').pop();
+        if(filePathExtension.startsWith('bicep')){
+            let azureCliPath = "az";
+            const useResolvedAzureCliPath = tl.getPipelineFeature("UseResolvedAzureCliPathForArmTemplateDeployment");
+            if (useResolvedAzureCliPath) {
+                azureCliPath = tl.which("az", false);
+                if (!azureCliPath) {
+                    throw new Error(tl.loc("AzureCLINotFound"));
+                }
+            }
+
+            let azcliversion = await this.getAzureCliVersion(useResolvedAzureCliPath ? azureCliPath : undefined)
+            if(parseFloat(azcliversion)){
+                if(this.isBicepAvailable(azcliversion, filePathExtension)){
+                    setAzureCloudBasedOnServiceEndpoint(taskParameters.connectedService, azureCliPath);
+                    await loginAzureRM(taskParameters.connectedService, azureCliPath);
+                    await this.execBicepBuild(filePath, azureCliPath)
+                    if(filePathExtension === 'bicep'){
+                        filePath = filePath.replace('.bicep', '.json')      
+                    }
+                    else{
+                        var fullFileName: string = filePath.split(path.sep).pop()
+                        var bicepParamExtension: string = '.bicepparam'
+                        if(fullFileName.split('.').length > 2){
+                            var nameArray: Array<string> = fullFileName.split('.')
+                            nameArray.splice(0, 1)
+                            bicepParamExtension = '.'+nameArray.join('.')
+                        }
+                        filePath = filePath.replace(bicepParamExtension, '.parameters.json')      
+                    }        
+                    await this.logoutAzure(azureCliPath);
+                }else{
+                    //Maintain backwards compatibility for runs that are not using bicep param and do not require higher version
+                    if(filePathExtension === 'bicep'){
+                        throw new Error(tl.loc("IncompatibleAzureCLIVersion"));
+                    }
+                    else{
+                        throw new Error(tl.loc("IncompatibleAzureCLIVersionBicepParam"));
+                    }
+                }
+            }else{
+                throw new Error(tl.loc("AzureCLINotFound"));
+            }
+        }
+
+        return filePath
+    }
+
+    private static async getAzureCliVersion(azureCliPath?: string): Promise<string> {
+        let azcliversion: string = "" ;
+        // Route through tl.execSync (instead of a raw child_process call) for both the resolved
+        // and legacy "az" invocations, so the agent's own tool-resolution/mocking applies consistently.
+        const result: IExecSyncResult = tl.execSync(azureCliPath || "az", "version");
+        if(result && result.code !== 0){
+            throw new Error(tl.loc("FailedToFetchAzureCLIVersion", result.stderr));
+        }else{
+            try{
+                azcliversion = JSON.parse(result.stdout)["azure-cli"]
+            }catch(err){
+                throw new Error(tl.loc("FailedToFetchAzureCLIVersion", err));
+            }
+        }
+        return azcliversion
+    }
+
+    private static async execBicepBuild(filePath, azureCliPath: string): Promise<void> {
+        var fullFileName: string = filePath.split(path.sep).pop()
+        var fileDir: string = filePath.replace(path.sep + fullFileName, '')
+        var filePathExtension: string = filePath.split('.').pop();
+        var fileName: string = filePath.split(path.sep).pop().split('.')[0];
+        var finalPathExtension: string = ".json" 
+
+        if(filePathExtension === 'bicep'){
+            const result: IExecSyncResult = tl.execSync(azureCliPath, `bicep build --file "${filePath}"`);
+            if(result && result.code !== 0){
+                throw new Error(tl.loc("BicepBuildFailed", result.stderr));
+            }
+        }
+        else{
+            finalPathExtension = ".parameters.json"
+
+            //Using --outfile to avoid overwriting primary bicep file in the case bicep and param file have the the same file name.
+            const result: IExecSyncResult = tl.execSync(azureCliPath, `bicep build-params --file "${filePath}" --outfile "${path.join(fileDir, fileName + finalPathExtension)}"`);
+            if(result && result.code !== 0){
+                throw new Error(tl.loc("BicepParamBuildFailed", result.stderr));
+            } 
+        }
+
+        this.cleanupFileList.push(fileDir + path.sep + fileName + finalPathExtension)  
+    }
+
+    private static async logoutAzure(azureCliPath: string) {
+        const result: IExecSyncResult = tl.execSync(azureCliPath, "account clear");
+        if(result && result.code !== 0){
+            throw new Error(tl.loc("BicepBuildFailed", result.stderr));
+        }
+    }
+
+    private static isBicepAvailable(azcliversion,extension): Boolean{
+        let majorVersion = azcliversion.split('.')[0]
+        let minorVersion = azcliversion.split('.')[1]
+        // Support for Bicep format was introduced in az-cli 2.20.0   
+        if(((majorVersion == 2 && minorVersion >= 20) && extension === 'bicep') || majorVersion > 2){
+            return true
+        }
+        // Support for Bicep Param format was introduced in az-cli 2.47.0
+        else if(((majorVersion == 2 && minorVersion >= 47) && extension === 'bicepparam') || majorVersion > 2){
+            return true
+        }
+        return false
     }
 }
 

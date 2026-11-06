@@ -13,11 +13,13 @@
   "author": "Microsoft Corporation",
   "version": {
     "Major": 1,
-    "Minor": 193,
+    "Minor": 279,
     "Patch": 0
   },
+  "deprecated": true,
+  "deprecationMessage": "The PublishTestResults@1 task is deprecated. Please use the latest version of the PublishTestResults task (PublishTestResults@2 or later).",
   "demands": [],
-  "minimumAgentVersion": "1.83.0",
+  "minimumAgentVersion": "2.144.0",
   "groups": [
     {
       "name": "advanced",
@@ -102,7 +104,15 @@
         "windows"
       ]
     },
-    "Node": {
+    "Node10": {
+      "target": "publishtestresults.js",
+      "argumentFormat": ""
+    },
+    "Node16": {
+      "target": "publishtestresults.js",
+      "argumentFormat": ""
+    },
+    "Node20_1": {
       "target": "publishtestresults.js",
       "argumentFormat": ""
     }

@@ -13,7 +13,7 @@
   "author": "Microsoft Corporation",
   "version": {
     "Major": 0,
-    "Minor": 194,
+    "Minor": 281,
     "Patch": 0
   },
   "satisfies": [
@@ -45,7 +45,8 @@
       "label": "ms-resource:loc.input.label.jdkArchitectureOption",
       "options": {
         "x64": "X64",
-        "x86": "X86"
+        "x86": "X86",
+        "arm64": "arm64"
       },
       "required": true,
       "helpMarkDown": "ms-resource:loc.input.help.jdkArchitectureOption"
@@ -118,6 +119,14 @@
       "helpMarkDown": "ms-resource:loc.input.help.jdkDestinationDirectory"
     },
     {
+      "name": "azureResourceGroupName",
+      "type": "string",
+      "label": "ms-resource:loc.input.label.azureResourceGroupName",
+      "required": false,
+      "visibleRule": "jdkSourceOption == AzureStorage",
+      "helpMarkDown": "ms-resource:loc.input.help.azureResourceGroupName"
+    },
+    {
       "name": "cleanDestinationDirectory",
       "type": "boolean",
       "label": "ms-resource:loc.input.label.cleanDestinationDirectory",
@@ -156,6 +165,18 @@
     "Node10": {
       "target": "javatoolinstaller.js",
       "argumentFormat": ""
+    },
+    "Node16": {
+      "target": "javatoolinstaller.js",
+      "argumentFormat": ""
+    },
+    "Node20_1": {
+      "target": "javatoolinstaller.js",
+      "argumentFormat": ""
+    },
+    "Node24": {
+      "target": "javatoolinstaller.js",
+      "argumentFormat": ""
     }
   },
   "restrictions": {
@@ -173,6 +194,7 @@
     "DownloadFromAzureBlobStorage": "ms-resource:loc.messages.DownloadFromAzureBlobStorage",
     "SuccessFullyFetchedItemList": "ms-resource:loc.messages.SuccessFullyFetchedItemList",
     "StorageAccountDoesNotExist": "ms-resource:loc.messages.StorageAccountDoesNotExist",
+    "RequestedUrlTooLong": "ms-resource:loc.messages.RequestedUrlTooLong",
     "UnzipExtractFile": "ms-resource:loc.messages.UnzipExtractFile",
     "SevenZipExtractFile": "ms-resource:loc.messages.SevenZipExtractFile",
     "TarExtractFile": "ms-resource:loc.messages.TarExtractFile",
@@ -198,8 +220,11 @@
     "ExpiredServicePrincipal": "ms-resource:loc.messages.ExpiredServicePrincipal",
     "CorrelationIdForARM": "ms-resource:loc.messages.CorrelationIdForARM",
     "JavaNotPreinstalled": "ms-resource:loc.messages.JavaNotPreinstalled",
+    "JavaHomeArm64NotFound": "ms-resource:loc.messages.JavaHomeArm64NotFound",
+    "JavaHomeResolvedFrom": "ms-resource:loc.messages.JavaHomeResolvedFrom",
     "UsePreinstalledJava": "ms-resource:loc.messages.UsePreinstalledJava",
     "WrongArchiveStructure": "ms-resource:loc.messages.WrongArchiveStructure",
+    "WrongArchiveFile": "ms-resource:loc.messages.WrongArchiveFile",
     "ShareAccessError": "ms-resource:loc.messages.ShareAccessError",
     "UnsupportedDMGStructure": "ms-resource:loc.messages.UnsupportedDMGStructure",
     "NoPKGFile": "ms-resource:loc.messages.NoPKGFile",

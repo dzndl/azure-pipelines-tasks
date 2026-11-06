@@ -12,7 +12,7 @@
   "author": "Microsoft Corporation",
   "version": {
     "Major": 5,
-    "Minor": 193,
+    "Minor": 281,
     "Patch": 0
   },
   "releaseNotes": "ms-resource:loc.releaseNotes",
@@ -96,6 +96,7 @@
         "10": "Xcode 10",
         "11": "Xcode 11",
         "12": "Xcode 12",
+        "13": "Xcode 13",
         "default": "Default",
         "specifyPath": "Specify path"
       }
@@ -364,10 +365,34 @@
     "Node10": {
       "target": "xcode.js",
       "argumentFormat": ""
+    },
+    "Node16": {
+      "target": "xcode.js",
+      "argumentFormat": ""
+    },
+    "Node20_1": {
+      "target": "xcode.js",
+      "argumentFormat": ""
+    },
+    "Node24": {
+      "target": "xcode.js",
+      "argumentFormat": ""
     }
   },
   "postjobexecution": {
     "Node10": {
+      "target": "postxcode.js",
+      "argumentFormat": ""
+    },
+    "Node16": {
+      "target": "postxcode.js",
+      "argumentFormat": ""
+    },
+    "Node20_1": {
+      "target": "postxcode.js",
+      "argumentFormat": ""
+    },
+    "Node24": {
       "target": "postxcode.js",
       "argumentFormat": ""
     }

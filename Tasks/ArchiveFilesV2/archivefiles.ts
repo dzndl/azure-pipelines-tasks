@@ -40,6 +40,9 @@ function getSevenZipLocation(): string {
 
 function findFiles(): string[] {
     if (includeRootFolder) {
+        if(!fs.existsSync(rootFolderOrFile)) {
+            tl.warning(`No file or directory found - ${rootFolderOrFile}`)
+        }
         return [path.basename(rootFolderOrFile)];
     } else {
         var fullPaths: string[] = tl.ls('-A', [rootFolderOrFile]);
@@ -91,7 +94,7 @@ function getOptions(): tr.IExecSyncOptions {
         tl.debug("cwd (include root folder)= " + dirName);
         return { cwd: dirName, outStream: process.stdout as stream.Writable, errStream: process.stderr as stream.Writable };
     } else {
-        var stats: tl.FsStats = tl.stats(rootFolderOrFile);
+        var stats: fs.Stats = tl.stats(rootFolderOrFile);
         if (stats.isFile()) {
             dirName = path.dirname(rootFolderOrFile);
         } else {
@@ -161,6 +164,7 @@ function zipArchive(archive: string, files: string[]) {
         zip.arg('-q');
     }
     zip.arg(archive);
+    zip.arg('--');
     for (var i = 0; i < files.length; i++) {
         zip.arg(files[i]);
         console.log(tl.loc('Filename', files[i]));
@@ -188,6 +192,7 @@ function tarArchive(archive: string, compression: string, files: string[]) {
     }
     tar.arg('-f');
     tar.arg(archive);
+    tar.arg('--');
     for (var i = 0; i < files.length; i++) {
         tar.arg(files[i]);
     }
@@ -320,22 +325,12 @@ function createArchive(files: string[]) {
 function doWork() {
     try {
         tl.setResourcePath(path.join( __dirname, 'task.json'));
-        // Find matching archive files
-        var files: string[] = findFiles();
-        utils.reportArchivePlan(files).forEach(function(line) {
-            console.log(line);
-        });
-
-        tl.debug('Listing all ' + files.length + ' files to archive:');
-        for (var i = 0; i < files.length; i++) {
-            tl.debug(files[i]);
-        }
 
         // replaceExistingArchive before creation?
         if (tl.exist(archiveFile)) {
             if (replaceExistingArchive) {
                 try {
-                    var stats: tl.FsStats = tl.stats(archiveFile);
+                    var stats: fs.Stats = tl.stats(archiveFile);
                     if (stats.isFile()) {
                         console.log(tl.loc('RemoveBeforeCreation', archiveFile));
                         tl.rmRF(archiveFile);
@@ -349,6 +344,13 @@ function doWork() {
                 console.log(tl.loc('AlreadyExists', archiveFile));
             }
         }
+
+        // Find matching archive files
+        var files: string[] = findFiles();
+        utils.reportArchivePlan(files).forEach(line => console.log(line));
+
+        tl.debug(`Listing all ${files.length} files to archive:`);
+        files.forEach(file => tl.debug(file));
 
         //ensure output folder exists
         var destinationFolder = path.dirname(archiveFile);

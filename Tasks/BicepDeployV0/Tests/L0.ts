@@ -1,0 +1,502 @@
+import assert = require("assert");
+import os = require("os");
+import path = require("path");
+import * as cp from "child_process";
+import * as ttm from "azure-pipelines-task-lib/mock-test";
+import tl = require("azure-pipelines-task-lib/task");
+import { TaskLogger } from "../logging";
+import { TaskOutputSetter } from "../taskIO";
+import { runConfigDirIsolationTests } from "./L0ConfigDirIsolation";
+
+// Uncomment to improve traces while testing
+// beforeEach(() => {
+//   process.env.TASK_TEST_TRACE = '1';
+// });
+
+// Helper function to validate expected errors in test results
+function assertHasErrors(tr: ttm.MockTestRunner, expectedErrors: string[], testName: string, expectedCount?: number) {
+  assert(tr.failed === true, "task should have failed");
+
+  assert(tr.errorIssues.length === expectedCount, `${testName}: should have exactly ${expectedCount} error message(s), but got ${tr.errorIssues.length}`);
+  expectedErrors.forEach(expectedError => {
+    const hasError = tr.errorIssues.some(e => e.includes(expectedError));
+    assert(hasError, `${testName}: should have error containing '${expectedError}'`);
+  });
+}
+
+// Helper function to validate successful test results
+function assertSucceeded(tr: ttm.MockTestRunner, testName: string) {
+  assert(tr.failed === false, `${testName}: task should not have failed`);
+  assert(tr.errorIssues.length === 0, `${testName}: should have no error issues`);
+  assert(tr.stdout.includes("OperationSucceeded"), `${testName}: should have success message`);
+}
+
+// Helper function to validate that output variables are set via ##vso[task.setvariable]
+function assertOutputVariables(tr: ttm.MockTestRunner, expectedOutputs: { name: string, value: string, isSecret: boolean }[], testName: string) {
+  expectedOutputs.forEach(({ name, value, isSecret }) => {
+    const expectedCommand = `##vso[task.setvariable variable=${name};isOutput=true;issecret=${isSecret};]${value}`;
+    assert(tr.stdout.includes(expectedCommand),
+      `${testName}: should set output variable '${name}' to '${value}'\nExpected: ${expectedCommand}\nStdout: ${tr.stdout}`);
+    const commandCount = tr.stdout.split(/\r?\n/).filter(line => line.startsWith(`##vso[task.setvariable variable=${name};`)).length;
+    assert.strictEqual(commandCount, 1, `${testName}: should set output variable '${name}' exactly once`);
+  });
+}
+
+const expectedCreateOutputs = [
+  { name: 'stringOutput', value: 'hello world', isSecret: false },
+  { name: 'intOutput', value: '42', isSecret: false },
+  { name: 'objectOutput', value: '{"key1":"value1","key2":"value2"}', isSecret: false },
+  { name: 'secretOutput', value: 'masked-marker', isSecret: true },
+  { name: 'secretObjectOutput', value: '{"key":"masked-object-marker"}', isSecret: true },
+];
+
+describe("AZURE_CONFIG_DIR isolation", function() {
+  runConfigDirIsolationTests();
+});
+
+describe("run error handling tests", function() {
+  this.timeout(30000);
+  it("sets the failed result using a string error", async function() {
+    let tp: string = path.join(__dirname, "runStringError.js");
+    let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+    await tr.runAsync();
+
+    assertHasErrors(tr, ["This is an error!"], this.test!.title, 1);
+  });
+
+  it("sets the failed result using an Error", async function() {
+    let tp: string = path.join(__dirname, "runErrorObject.js");
+    let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+    await tr.runAsync();
+
+    assertHasErrors(tr, ["This is an error!"], this.test!.title, 1);
+  });
+});
+
+describe("TaskLogger external output", function() {
+  const sources = ["remote", "repository", "childProcess"] as const;
+  const levels = ["info", "debug", "warning", "error"] as const;
+
+  for (const source of sources) {
+    for (const level of levels) {
+      it(`maps ${source} ${level} output to the task-lib filter`, function() {
+        const calls: Array<{ level: string, message: string | Buffer, options: tl.ExternalOutputOptions }> = [];
+        const originalWriteExternalOutput = tl.writeExternalOutput;
+        const originalDebugExternalOutput = tl.debugExternalOutput;
+        const originalWarningExternalOutput = tl.warningExternalOutput;
+        const originalErrorExternalOutput = tl.errorExternalOutput;
+
+        tl.writeExternalOutput = (message, options): void => {
+          calls.push({ level: "info", message, options });
+        };
+        tl.debugExternalOutput = (message, options): void => {
+          calls.push({ level: "debug", message, options });
+        };
+        tl.warningExternalOutput = (message, options): void => {
+          calls.push({ level: "warning", message, options });
+        };
+        tl.errorExternalOutput = (message, options): void => {
+          calls.push({ level: "error", message, options });
+        };
+
+        try {
+          new TaskLogger().logExternalOutput("external output", { source, level });
+
+          assert.deepStrictEqual(calls, [{
+            level,
+            message: level === "info" ? `external output${os.EOL}` : "external output",
+            options: { source }
+          }]);
+        } finally {
+          tl.writeExternalOutput = originalWriteExternalOutput;
+          tl.debugExternalOutput = originalDebugExternalOutput;
+          tl.warningExternalOutput = originalWarningExternalOutput;
+          tl.errorExternalOutput = originalErrorExternalOutput;
+        }
+      });
+    }
+  }
+
+  for (const level of levels) {
+    it(`neutralizes executable commands in ${level} output`, function() {
+      const command = "##vso[task.setvariable variable=externalValue]unsafe";
+      const originalWrite = process.stdout.write;
+      let output = "";
+      process.stdout.write = ((chunk: Uint8Array | string): boolean => {
+        output += chunk.toString();
+        return true;
+      }) as typeof process.stdout.write;
+
+      try {
+        new TaskLogger().logExternalOutput(
+          `\x1b[34mbefore\n${command}\nafter\x1b[0m`,
+          { source: "remote", level }
+        );
+      } finally {
+        process.stdout.write = originalWrite;
+      }
+
+      assert(output.includes("##_vso[task.setvariable variable=externalValue]unsafe"));
+      assert(!output.includes(command));
+    });
+  }
+
+  it("preserves multiline ANSI info output with one final record boundary", function() {
+    const originalWriteExternalOutput = tl.writeExternalOutput;
+    let actualMessage: string | Buffer;
+    let actualOptions: tl.ExternalOutputOptions;
+    tl.writeExternalOutput = (message, options): void => {
+      actualMessage = message;
+      actualOptions = options;
+    };
+
+    try {
+      const message = "\x1b[34mfirst line\nsecond line\x1b[0m";
+      new TaskLogger().logExternalOutput(message, { source: "remote", level: "info" });
+
+      assert.strictEqual(actualMessage, `${message}${os.EOL}`);
+      assert.deepStrictEqual(actualOptions, { source: "remote" });
+    } finally {
+      tl.writeExternalOutput = originalWriteExternalOutput;
+    }
+  });
+});
+
+describe("TaskOutputSetter", function() {
+  const outputNames = ["storageAccountName", "connectionString", "UPPER_CASE_OUTPUT"];
+
+  function captureOutputCommands(action: () => void): string {
+    const originalWrite = process.stdout.write;
+    let output = "";
+    process.stdout.write = ((chunk: Uint8Array | string): boolean => {
+      output += chunk.toString();
+      return true;
+    }) as typeof process.stdout.write;
+
+    try {
+      action();
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+
+    return output;
+  }
+
+  for (const isSecret of [false, true]) {
+    for (const name of outputNames) {
+      it(`sets ${name} as a step output variable (isSecret=${isSecret})`, function() {
+        const environmentBefore = { ...process.env };
+
+        const output = captureOutputCommands(() =>
+          new TaskOutputSetter().setOutputVariable(name, "output-marker", { isSecret }));
+
+        assert.deepStrictEqual({ ...process.env }, environmentBefore);
+        const expected = [`##vso[task.setvariable variable=${name};isOutput=true;issecret=${isSecret};]output-marker`];
+        if (isSecret) {
+          expected.unshift("##vso[task.setsecret]output-marker");
+        }
+        assert.deepStrictEqual(output.split(/\r?\n/).filter(line => line.length > 0), expected);
+      });
+    }
+  }
+
+  it("serializes object and array values as JSON", function() {
+    const output = captureOutputCommands(() => {
+      const setter = new TaskOutputSetter();
+      setter.setOutputVariable("objectOutput", { key: "value" }, { isSecret: true });
+      setter.setOutputVariable("arrayOutput", ["one", "two"], { isSecret: false });
+    });
+
+    assert(output.includes('##vso[task.setvariable variable=objectOutput;isOutput=true;issecret=true;]{"key":"value"}'));
+    assert(output.includes('##vso[task.setvariable variable=arrayOutput;isOutput=true;issecret=false;]["one","two"]'));
+  });
+
+  for (const [description, value] of [["null", null], ["undefined", undefined]] as [string, unknown][]) {
+    it(`writes an empty value for a ${description} secret output`, function() {
+      const output = captureOutputCommands(() =>
+        new TaskOutputSetter().setOutputVariable("emptyOutput", value, { isSecret: true }));
+
+      assert.deepStrictEqual(output.split(/\r?\n/).filter(line => line.length > 0),
+        ["##vso[task.setvariable variable=emptyOutput;isOutput=true;issecret=true;]"]);
+    });
+  }
+
+  it("keeps falsy number and boolean values", function() {
+    const output = captureOutputCommands(() => {
+      const setter = new TaskOutputSetter();
+      setter.setOutputVariable("zeroOutput", 0, { isSecret: false });
+      setter.setOutputVariable("falseOutput", false, { isSecret: false });
+    });
+
+    assert.deepStrictEqual(output.split(/\r?\n/).filter(line => line.length > 0), [
+      "##vso[task.setvariable variable=zeroOutput;isOutput=true;issecret=false;]0",
+      "##vso[task.setvariable variable=falseOutput;isOutput=true;issecret=false;]false",
+    ]);
+  });
+
+  it("escapes special characters in output names and values", function() {
+    const output = captureOutputCommands(() =>
+      new TaskOutputSetter().setOutputVariable("name;with]chars", "value;with]chars%\r\nsecond line", { isSecret: false }));
+
+    const lines = output.split(/\r?\n/).filter(line => line.length > 0);
+    assert.strictEqual(lines.length, 1, `should emit exactly one command: ${output}`);
+    assert(lines[0].startsWith("##vso[task.setvariable variable=name%3Bwith%5Dchars;isOutput=true;issecret=false;]"),
+      `unexpected command: ${lines[0]}`);
+    assert(lines[0].includes("%0D%0Asecond line"), `unexpected value: ${lines[0]}`);
+  });
+
+  describe("multiline secret values", function() {
+    const overrideVariable = "SYSTEM_UNSAFEALLOWMULTILINESECRET";
+    let originalOverride: string | undefined;
+
+    beforeEach(function() {
+      originalOverride = process.env[overrideVariable];
+      delete process.env[overrideVariable];
+    });
+
+    afterEach(function() {
+      if (originalOverride === undefined) {
+        delete process.env[overrideVariable];
+      } else {
+        process.env[overrideVariable] = originalOverride;
+      }
+    });
+
+    for (const [description, value] of [["LF", "first\nsecond"], ["CRLF", "first\r\nsecond"], ["CR", "first\rsecond"]]) {
+      it(`rejects a secret value containing ${description} without writing a command`, function() {
+        let error: Error | undefined;
+        const output = captureOutputCommands(() => {
+          try {
+            new TaskOutputSetter().setOutputVariable("multilineOutput", value, { isSecret: true });
+          } catch (err) {
+            error = err as Error;
+          }
+        });
+
+        assert(error, "should throw");
+        assert.strictEqual(error!.message, tl.loc("LIB_MultilineSecret"));
+        assert.strictEqual(output, "", `should not write any command: ${output}`);
+      });
+    }
+
+    it("allows a multiline secret value when the override variable is true", function() {
+      process.env[overrideVariable] = "true";
+
+      const output = captureOutputCommands(() =>
+        new TaskOutputSetter().setOutputVariable("multilineOutput", "first\nsecond", { isSecret: true }));
+
+      assert.deepStrictEqual(output.split(/\r?\n/).filter(line => line.length > 0), [
+        "##vso[task.setsecret]first%0Asecond",
+        "##vso[task.setvariable variable=multilineOutput;isOutput=true;issecret=true;]first%0Asecond",
+      ]);
+    });
+
+    it("allows a multiline value that is not secret", function() {
+      const output = captureOutputCommands(() =>
+        new TaskOutputSetter().setOutputVariable("multilineOutput", "first\nsecond", { isSecret: false }));
+
+      assert.strictEqual(output.trim(), "##vso[task.setvariable variable=multilineOutput;isOutput=true;issecret=false;]first%0Asecond");
+    });
+  });
+});
+
+describe("deployments tests", function() {
+  // Bicep is mocked - no real installation needed
+  this.timeout(30000);
+
+  it("runs validation", async function() {
+    let tp: string = path.join(__dirname, "deploymentsValidation.js");
+
+    let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+    await tr.runAsync();
+
+    assertSucceeded(tr, this.test!.title);
+  });
+
+  it("runs create and handles failures", async function() {
+    let tp: string = path.join(__dirname, "deploymentsCreateFailures.js");
+
+    let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+    await tr.runAsync();
+
+    assertHasErrors(tr, [
+      "RequestFailedCorrelation",
+      "DeploymentFailed",
+      "ResourceNotFound",
+      "CreateFailed"
+    ], this.test!.title, 3);
+  });
+
+  it("handles deployment failures", async function() {
+    let tp: string = path.join(__dirname, "deploymentsFailures.js");
+
+    let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+    await tr.runAsync();
+
+    assertHasErrors(tr, [
+      "RequestFailedCorrelation",
+      "InvalidTemplateDeployment",
+      "StorageAccountAlreadyTaken",
+      "ValidationFailed"
+    ], this.test!.title, 3);
+  });
+
+  it("runs what-if", async function() {
+    let tp: string = path.join(__dirname, "deploymentsWhatIf.js");
+
+    let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+    await tr.runAsync();
+
+    assertSucceeded(tr, this.test!.title);
+    assert(
+      tr.stdOutContained("##_vso[task.setvariable variable=externalValue]desired"),
+      "desired What-If value should be neutralized"
+    );
+    assert(
+      !tr.stdOutContained("##vso[task.setvariable variable=externalValue]desired"),
+      "desired What-If value should not contain an executable command"
+    );
+  });
+
+  it("filters existing removed values from what-if output", async function() {
+    let tp: string = path.join(__dirname, "deploymentsWhatIfExistingValue.js");
+
+    let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+    await tr.runAsync();
+
+    assertSucceeded(tr, this.test!.title);
+    assert(
+      tr.stdOutContained("##_vso[task.setvariable variable=externalValue]existing"),
+      "existing What-If value should be neutralized"
+    );
+    assert(
+      !tr.stdOutContained("##vso[task.setvariable variable=externalValue]existing"),
+      "existing What-If value should not contain an executable command"
+    );
+  });
+
+  it("handles inline yaml parameters", async function() {
+    let tp: string = path.join(__dirname, "deploymentsInlineYamlParams.js");
+
+    let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+    await tr.runAsync();
+
+    assertSucceeded(tr, this.test!.title);
+  });
+
+  it("runs create and sets output variables", async function() {
+    let tp: string = path.join(__dirname, "deploymentsCreate.js");
+
+    let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+    await tr.runAsync();
+
+    assertSucceeded(tr, this.test!.title);
+    assertOutputVariables(tr, expectedCreateOutputs, this.test!.title);
+  });
+
+  it("runs create with no parameters file", async function() {
+    let tp: string = path.join(__dirname, "deploymentsCreateNoParamFile.js");
+
+    let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+    await tr.runAsync();
+
+    assertSucceeded(tr, this.test!.title);
+  });
+});
+
+describe("stacks tests", function() {
+  // Bicep is mocked - no real installation needed
+  this.timeout(30000);
+
+  it("runs validation", async function() {
+    let tp: string = path.join(__dirname, "stacksValidation.js");
+
+    let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+    await tr.runAsync();
+
+    assertSucceeded(tr, this.test!.title);
+  });
+
+  it("runs create and handles failures", async function() {
+    let tp: string = path.join(__dirname, "stacksCreateFailures.js");
+
+    let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+    await tr.runAsync();
+
+    assertHasErrors(tr, [
+      "RequestFailedCorrelation",
+      "DeploymentStackDeploymentFailed",
+      "DeploymentFailed",
+      "CreateFailed"
+    ], this.test!.title, 3);
+  });
+
+  it("handles deployment failures", async function() {
+    let tp: string = path.join(__dirname, "stacksFailures.js");
+
+    let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+    await tr.runAsync();
+
+    assertHasErrors(tr, [
+      "RequestFailedCorrelation",
+      "InvalidTemplateDeployment",
+      "StorageAccountAlreadyTaken",
+      "ValidationFailed"
+    ], this.test!.title, 3);
+  });
+
+  it("handles inline yaml parameters", async function() {
+    let tp: string = path.join(__dirname, "stacksInlineYamlParams.js");
+
+    let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+    await tr.runAsync();
+
+    assertSucceeded(tr, this.test!.title);
+  });
+
+  it("runs create and sets output variables", async function() {
+    let tp: string = path.join(__dirname, "stacksCreate.js");
+
+    let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+    await tr.runAsync();
+
+    assertSucceeded(tr, this.test!.title);
+    assertOutputVariables(tr, expectedCreateOutputs, this.test!.title);
+  });
+});
+
+// Verifies that nothing in the task graph calls tl.loc() at module-import time
+// (before tl.setResourcePath() runs). The mock-test harness stubs both
+// setResourcePath and loc to no-ops, so this regression is invisible to the
+// MockTestRunner-based tests above. Instead, we spawn a child node process
+// that requires the real (non-mocked) task-lib via ../logging and inspect
+// stdout for task-lib's "Resource file haven't been set" warning.
+describe("resource file loading", function() {
+  this.timeout(15000);
+
+  it("does not localize at import time", function() {
+    const probe = path.join(__dirname, "resourceFileProbe.js");
+    const result = cp.spawnSync(process.execPath, [probe], { encoding: "utf8" });
+
+    assert.strictEqual(result.status, 0, `probe exited non-zero: ${result.stderr}`);
+    assert(
+      !result.stdout.includes("Resource file haven't been set"),
+      `tl.setResourcePath() must run before any tl.loc() call.\nProbe stdout:\n${result.stdout}\nProbe stderr:\n${result.stderr}`,
+    );
+  });
+});

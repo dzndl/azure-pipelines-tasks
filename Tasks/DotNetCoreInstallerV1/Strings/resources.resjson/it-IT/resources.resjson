@@ -1,6 +1,6 @@
 {
   "loc.friendlyName": "Programma di installazione di .NET Core SDK/Runtime",
-  "loc.helpMarkDown": "[Learn more about this task](https://aka.ms/AA4ihfi)",
+  "loc.helpMarkDown": "[Altre informazioni su questa attività](https://aka.ms/AA4ihfi)",
   "loc.description": "Acquisisce una versione specifica di .NET Core SDK da Internet o dalla cache locale e la aggiunge al percorso",
   "loc.instanceNameFormat": "Installa .NET Core $(packageType) $(version)",
   "loc.releaseNotes": "<li>Supporto per l'installazione di più versioni side-by-side.</li><li>Supporto per i criteri di recupero dell'ultima versione principale/secondaria.</li><li>Limitazione della ricerca multilivello</li>",
@@ -8,7 +8,7 @@
   "loc.input.label.packageType": "Pacchetto da installare",
   "loc.input.help.packageType": "Scegliere se installare solo il runtime o l'SDK.",
   "loc.input.label.version": "Versione",
-  "loc.input.help.version": "Specificare la versione di .NET Core SDK o il runtime da installare.<br/>È possibile specificare le versioni nei formati seguenti:<li>2.x   => Installa la versione principale più recente.</li><li>2.2.x => Installa la versione principale e secondaria più recente</li><li>2.2.104 => Installa la versione esatta</li><br/>Individuare il valore di `version` per l'installazione di SDK/Runtime in releases.json. Il collegamento a releases.json della versione principale.secondaria è disponibile nel [**file releases-index**](https://github.com/dotnet/core/blob/master/release-notes/releases-index.json). Ad esempio, il collegamento a releases.json per la versione 2.2 è https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/2.2/releases.json",
+  "loc.input.help.version": "Specificare la versione di .NET Core SDK o il runtime da installare.<br/>È possibile specificare le versioni nei formati seguenti:<li>2.x   => Installa la versione principale più recente.</li><li>2.2.x => Installa la versione principale e secondaria più recente</li><li>2.2.104 => Installa la versione esatta</li><br/>Individuare il valore di `version` per l'installazione di SDK/Runtime in releases.json. Il collegamento a releases.json della versione principale.secondaria è disponibile nel [**file releases-index**](https://builds.dotnet.microsoft.com/dotnet/release-metadata/releases-index.json). Ad esempio, il collegamento a releases.json per la versione 2.2 è https://builds.dotnet.microsoft.com/dotnet/release-metadata/2.2/releases.json",
   "loc.input.label.includePreviewVersions": "Includi versioni in anteprima",
   "loc.input.help.includePreviewVersions": "Selezionare questa impostazione se si vuole che le versioni in anteprima vengano incluse durante la ricerca delle versioni più recenti, ad esempio durante la ricerca della versione 2.2.x. Questa impostazione viene ignorata se si specifica una versione esatta, ad esempio: 3.0.100-preview3-010431",
   "loc.input.label.installationPath": "Percorso per l'installazione di .NET Core",
@@ -38,7 +38,7 @@
   "loc.messages.PrependGlobalToolPath": "Creazione del percorso strumenti globale e aggiunta del percorso prima di PATH.",
   "loc.messages.VersionsFileMalformed": "Il formato dei collegamenti di download della versione specificata non è corretto nel documento delle versioni supportate => %s/",
   "loc.messages.MatchingVersionNotFound": "Non è stata trovata alcuna versione %s corrispondente per la versione specificata %s. Tenere presente che le versioni in anteprima vengono considerate nelle ricerche delle versioni più recenti solo se la casella di controllo Includi versioni in anteprima è selezionata.",
-  "loc.messages.UnableToAccessPath": "Unable to access path: %s. Error: %s. Please make sure that agent process has access to the path.",
+  "loc.messages.UnableToAccessPath": "Non è possibile accedere al percorso %s. Errore: %s. Assicurarsi che il processo dell'agente possa accedere al percorso.",
   "loc.messages.VersionCanNotBeDownloadedFromUrl": "Non è possibile scaricare la versione %s dall'URL %s. Il valore dell'URL o della versione non è corretto.",
   "loc.messages.CopyingFoldersIntoPath": "Copia di tutte le cartelle radice nel percorso di installazione: %s",
   "loc.messages.CopyingFilesIntoPath": "Copia dei file radice (ad esempio dotnet.exe) nel percorso di installazione: %s",
@@ -47,7 +47,7 @@
   "loc.messages.ExplicitVersionRequired": "La versione %s non è consentita. Le versioni da installare devono essere specificate nel formato principale.secondaria.versionepatch. Ad esempio: 2.2.1",
   "loc.messages.VersionFoundInCache": "La versione %s è stata trovata nella cache.",
   "loc.messages.VersionNotFoundInCache": "La versione %s non è stata trovata nella cache.",
-  "loc.messages.CreatingInstallationCompeleteFile": "Creating installation complete marker file for .Net core %s version %s",
+  "loc.messages.CreatingInstallationCompeleteFile": "Creazione del file indicatore di installazione completato per .NET Core %s versione %s",
   "loc.messages.CannotFindRuntimeVersionForCompletingInstallation": "Non è possibile trovare la versione del runtime per il tipo di pacchetto %s con versione %s",
   "loc.messages.PathNotFoundException": "Non è stato possibile individuare/trovare il percorso %s. Assicurarsi che sia esistente.",
   "loc.messages.VersionIsLocalLatest": "La versione %s è l'ultima tra le versioni presenti nel percorso %s",
@@ -63,7 +63,7 @@
   "loc.messages.VersionNotFound": "Non è stato possibile trovare la versione %s corrispondente a %s",
   "loc.messages.VersionNotAllowed": "La versione %s non è consentita. I tipi di versione consentiti sono: versionePrincipale.x, versionePrincipale.versioneSecondaria.x, versionePrincipale.versioneSecondaria.versionePatch",
   "loc.messages.VersionsCanNotBeCompared": "Non è possibile confrontare le versioni %s e %s. Entrambe le versioni devono essere esplicite.",
-  "loc.messages.FileNameNotCorrectCompleteFileName": "File name %s is not a correct '.complete' file.",
+  "loc.messages.FileNameNotCorrectCompleteFileName": "Il nome file %s non corrisponde a un file '.complete' corretto.",
   "loc.messages.ChannelVersionsNotComparable": "Non è possibile confrontare le versioni %s e %s del canale. Devono includere entrambe versioni numeriche principali e secondarie.",
   "loc.messages.LookingForVersionInChannel": "Ricerca della versione nel canale %s",
   "loc.messages.FallingBackToAdjacentChannels": "Non è stato possibile trovare la versione %s nel relativo canale. Verrà eseguita la ricerca nei canali adiacenti.",
@@ -78,5 +78,6 @@
   "loc.messages.FilesDataIsIncorrectInVersion": "Nella versione %s per la versione %s i dati dei file non sono corretti (potrebbero mancare campi obbligatori, come nome, RID e URL): %s",
   "loc.messages.VersionFilesDataIncorrect": "I dati dei file della versione non sono presenti o non includono campi obbligatori.",
   "loc.messages.VersionInformationNotComplete": "Le informazioni obbligatorie della versione %s non sono complete nel file releases.json. Errore: %s",
-  "loc.messages.FailedWhileExtractingPacakge": "Si è verificato un errore durante l'estrazione del pacchetto scaricato. Errore: %s"
+  "loc.messages.FailedWhileExtractingPacakge": "Si è verificato un errore durante l'estrazione del pacchetto scaricato. Errore: %s",
+  "loc.messages.DeprecatedTask": "L'attività DotNetCoreInstaller@1 (programma di installazione di .NET Core SDK/runtime) è stata deprecata dal 22 agosto 2019 e verrà presto ritirata. Usare invece l'attività UseDotNet@2. Per altre informazioni sulle attività deprecate, visitare https://aka.ms/azdo-deprecated-tasks."
 }

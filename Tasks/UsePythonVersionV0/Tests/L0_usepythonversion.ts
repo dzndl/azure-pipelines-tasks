@@ -1,12 +1,13 @@
 import * as assert from 'assert';
 import * as path from 'path';
 
-import * as mockery from 'mockery';
+import * as libMocker from 'azure-pipelines-task-lib/lib-mocker';
 import * as sinon from 'sinon';
 import * as mockTask from 'azure-pipelines-task-lib/mock-task';
 
 import { Platform } from '../taskutil';
 import * as usePythonVersion from '../usepythonversion';
+import { TaskParameters } from '../interfaces';
 
 /** Reload the unit under test to use mocks that have been registered. */
 function reload(): typeof usePythonVersion {
@@ -14,39 +15,42 @@ function reload(): typeof usePythonVersion {
 }
 
 before(function () {
-    mockery.enable({
+    libMocker.enable({
         useCleanCache: true,
         warnOnUnregistered: false
     });
 });
 
 after(function () {
-    mockery.disable();
+    libMocker.disable();
 });
 
 afterEach(function () {
-    mockery.deregisterAll();
-    mockery.resetCache();
+    libMocker.deregisterAll();
+    libMocker.resetCache();
 });
 
 it('sets PATH correctly on Linux', async function () {
-    mockery.registerMock('azure-pipelines-task-lib/task', mockTask);
+    libMocker.registerMock('azure-pipelines-task-lib/task', mockTask);
 
     const findLocalTool = sinon.stub().returns('findLocalTool');
-    mockery.registerMock('azure-pipelines-tool-lib/tool', {
+    libMocker.registerMock('azure-pipelines-tool-lib/tool', {
         findLocalTool
     });
 
     const prependPathSafe = sinon.spy();
-    mockery.registerMock('./toolutil', {
+    libMocker.registerMock('./toolutil', {
         prependPathSafe
     });
 
     const uut = reload();
-    const parameters = {
+    const parameters: TaskParameters = {
         versionSpec: '3.6',
+        disableDownloadFromRegistry: false,
+        allowUnstable: true,
         addToPath: true,
-        architecture: 'x64'
+        architecture: 'x64',
+        githubToken: 'testgithubtoken'
     };
 
     await uut.usePythonVersion(parameters, Platform.Linux);
@@ -57,27 +61,30 @@ it('sets PATH correctly on Linux', async function () {
 });
 
 it('sets PATH correctly on Windows', async function () {
-    mockery.registerMock('azure-pipelines-task-lib/task', mockTask);
+    libMocker.registerMock('azure-pipelines-task-lib/task', mockTask);
 
     // Windows PATH logic will parse this path, so it has to be realistic
     const toolPath = path.join('/', 'Python', '3.6.4', 'x64');
     const findLocalTool = sinon.stub().returns(toolPath);
-    mockery.registerMock('azure-pipelines-tool-lib/tool', {
+    libMocker.registerMock('azure-pipelines-tool-lib/tool', {
         findLocalTool
     });
 
     const prependPathSafe = sinon.spy();
-    mockery.registerMock('./toolutil', {
+    libMocker.registerMock('./toolutil', {
         prependPathSafe
     });
 
     process.env['APPDATA'] = '/mock-appdata'; // needed for running this test on Linux and macOS
 
     const uut = reload();
-    const parameters = {
+    const parameters: TaskParameters = {
         versionSpec: '3.6',
+        disableDownloadFromRegistry: false,
+        allowUnstable: true,
         addToPath: true,
-        architecture: 'x64'
+        architecture: 'x64',
+        githubToken: 'testgithubtoken'
     };
 
     await uut.usePythonVersion(parameters, Platform.Windows);

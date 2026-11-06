@@ -1,12 +1,13 @@
+import tl = require('azure-pipelines-task-lib/task');
+import { AzureRmEndpointAuthenticationScheme } from 'azure-pipelines-tasks-azure-arm-rest/constants';
+import { PackageType } from 'azure-pipelines-tasks-webdeployment-common/packageUtility';
 import { TaskParameters, DeploymentType } from '../taskparameters';
 import { BuiltInLinuxWebAppDeploymentProvider } from './BuiltInLinuxWebAppDeploymentProvider';
 import { IWebAppDeploymentProvider } from './IWebAppDeploymentProvider';
-import { WindowsWebAppZipDeployProvider } from './WindowsWebAppZipDeployProvider';
 import { WindowsWebAppRunFromZipProvider } from './WindowsWebAppRunFromZipProvider';
-import tl = require('azure-pipelines-task-lib/task');
-import { PackageType } from 'azure-pipelines-tasks-azurermdeploycommon/webdeployment-common/packageUtility';
 import { WindowsWebAppWarDeployProvider } from './WindowsWebAppWarDeployProvider';
-import { AzureRmEndpointAuthenticationScheme } from 'azure-pipelines-tasks-azurermdeploycommon/azure-arm-rest/constants';
+import { WindowsWebAppZipDeployProvider } from './WindowsWebAppZipDeployProvider';
+import { AzureWebAppSiteContainersDeploymentProvider } from './AzureWebAppSiteContainersDeploymentProvider';
 
 export class DeploymentFactory {
 
@@ -19,7 +20,13 @@ export class DeploymentFactory {
     public async GetDeploymentProvider(): Promise<IWebAppDeploymentProvider> {
         if(this._taskParams.isLinuxApp) {
             tl.debug("Deployment started for linux app service");
-            return new BuiltInLinuxWebAppDeploymentProvider(this._taskParams);
+
+            if (this._taskParams.SiteContainers && this._taskParams.SiteContainers.length > 0) {
+                tl.debug("Site Containers deployment detected, using AzureWebAppSiteContainersDeploymentProvider.");
+                return new AzureWebAppSiteContainersDeploymentProvider(this._taskParams);
+            } else {
+                return new BuiltInLinuxWebAppDeploymentProvider(this._taskParams);
+            }
         } else {
             tl.debug("Deployment started for windows app service");
             return await this._getWindowsDeploymentProvider()

@@ -1,0 +1,43 @@
+'use strict';
+
+import * as tl from 'azure-pipelines-task-lib/task';
+import * as ImageUtils from "azure-pipelines-tasks-docker-common/containerimageutils";
+import ContainerConnection from "azure-pipelines-tasks-docker-common/containerconnection";
+import RegistryServerAuthenticationToken from "azure-pipelines-tasks-docker-common/registryauthenticationprovider/registryauthenticationtoken";
+import { getDockerRegistryEndpointAuthenticationToken } from "azure-pipelines-tasks-docker-common/registryauthenticationprovider/registryauthenticationtoken";
+
+export class DockerConnection {
+    private connection: ContainerConnection;
+    private registryAuthenticationToken: RegistryServerAuthenticationToken;
+
+    public async open() {      
+        const endpointId = tl.getInput("dockerRegistryServiceConnection", true);
+        this.registryAuthenticationToken = await getDockerRegistryEndpointAuthenticationToken(endpointId);        
+        this.connection = new ContainerConnection();
+        this.connection.open(null, this.registryAuthenticationToken);
+    }
+
+    public getRegistry() {
+        let registry = '';
+        if (this.registryAuthenticationToken) {
+            const registryUrl = this.registryAuthenticationToken.getLoginServerUrl();
+            registry = this.getHostName(registryUrl);
+        }
+
+        return registry;
+    }
+
+    public close() {
+        if (this.connection) {
+            this.connection.close();
+        }
+    }
+
+    private getHostName(registryUrl: string) {
+        try {
+            return new URL(registryUrl,"https://placeholder").host;
+        } catch {
+            return registryUrl;
+        }
+    }
+}

@@ -3,162 +3,115 @@
 
 import assert = require('assert');
 import path = require('path');
-import os = require('os');
 import process = require('process');
-import fs = require('fs');
-import {JobState, checkStateTransitions} from '../states';
+import stream = require('stream');
+import tl = require('azure-pipelines-task-lib/task');
+import { createJenkinsConsoleOutputStream } from '../job';
+import { JobState, checkStateTransitions } from '../states';
+import { StringWritable } from '../util';
 
 import * as ttm from 'azure-pipelines-task-lib/mock-test';
 
 describe('JenkinsQueueJob L0 Suite', function () {
     this.timeout(parseInt(process.env.TASK_TEST_TIMEOUT) || 20000);
 
-    before((done) => {
+    before(() => {
         process.env['ENDPOINT_AUTH_ID1'] = '{\"scheme\":\"UsernamePassword\", \"parameters\": {\"username\": \"uname\", \"password\": \"pword\"}}';
         process.env['ENDPOINT_URL_ID1'] = 'bogusURL';
         //Environment variables must have _ in place of .
         process.env['Build_StagingDirectory'] = 'someBuild_StagingDirectory';
 
-        done();
     });
 
     /* tslint:disable:no-empty */
     after(function () { });
     /* tslint:enable:no-empty */
 
-    it('run JenkinsQueueJob with no server endpoint', (done) => {
+    it('run JenkinsQueueJob with no server endpoint', async () => {
         const tp: string = path.join(__dirname, 'L0NoServerEndpoint.js');
         const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
 
-        try {
-            tr.run();
+        await tr.runAsync();
 
+        runValidations(() => {
             assert(tr.stderr.indexOf('Input required: serverEndpoint') !== -1, 'should have written to stderr');
             assert(tr.failed, 'task should have failed');
-            done();
-
-            //assert(tr.ran(gradleWrapper + ' build'), 'it should have run gradlew build');
-            //assert(tr.invokedToolCount === 1, 'should have only run gradle 1 time');
-            //assert(tr.stderr.length === 0, 'should not have written to stderr');
-            //assert(tr.succeeded, 'task should have succeeded');
-            //assert(tr.stdout.indexOf('GRADLE_OPTS is now set to -Xmx2048m') > 0);
-        } catch (err) {
-            console.log(tr.stdout);
-            console.log(tr.stderr);
-            console.log(err);
-            done(err);
-        }
+        }, tr);
     });
 
-    it('run JenkinsQueueJob with no job name', (done) => {
+    it('run JenkinsQueueJob with no job name', async () => {
         const tp: string = path.join(__dirname, 'L0NoJobName.js');
         const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
 
-        try {
-            tr.run();
+        await tr.runAsync();
 
+        runValidations(() => {
             assert(tr.stderr.indexOf('Input required: jobName') !== -1, 'should have written to stderr');
             assert(tr.failed, 'task should have failed');
-            done();
-        } catch (err) {
-            console.log(tr.stdout);
-            console.log(tr.stderr);
-            console.log(err);
-            done(err);
-        }
+        }, tr);
     });
 
-    it('run JenkinsQueueJob with no capture console', (done) => {
+    it('run JenkinsQueueJob with no capture console', async () => {
         const tp: string = path.join(__dirname, 'L0NoCaptureConsole.js');
         const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
 
-        try {
-            tr.run();
+        await tr.runAsync();
 
+        runValidations(() => {
             assert(tr.stderr.indexOf('Input required: captureConsole') != -1, 'should have written to stderr');
             assert(tr.failed, 'task should have failed');
-            done();
-        } catch (err) {
-            console.log(tr.stdout);
-            console.log(tr.stderr);
-            console.log(err);
-            done(err);
-        }
+        }, tr);
     });
 
-    it('run JenkinsQueueJob with no capture pipeline', (done) => {
+    it('run JenkinsQueueJob with no capture pipeline', async () => {
         const tp: string = path.join(__dirname, 'L0NoCapturePipeline.js');
         const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
 
-        try {
-            tr.run();
+        await tr.runAsync();
 
+        runValidations(() => {
             assert(tr.stderr.indexOf('Input required: capturePipeline') != -1, 'should have written to stderr');
             assert(tr.failed, 'task should have failed');
-            done();
-        } catch (err) {
-            console.log(tr.stdout);
-            console.log(tr.stderr);
-            console.log(err);
-            done(err);
-        }
+        }, tr);
     });
 
-    it('run JenkinsQueueJob with no parameterized job', (done) => {
+    it('run JenkinsQueueJob with no parameterized job', async () => {
         const tp: string = path.join(__dirname, 'L0NoParameterizedJob.js');
         const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
 
-        try {
-            tr.run();
+        await tr.runAsync();
 
+        runValidations(() => {
             assert(tr.stderr.indexOf('Input required: parameterizedJob') != -1, 'should have written to stderr');
             assert(tr.failed, 'task should have failed');
-            done();
-        } catch (err) {
-            console.log(tr.stdout);
-            console.log(tr.stderr);
-            console.log(err);
-            done(err);
-        }
+        }, tr);
     });
 
-    it('run JenkinsQueueJob with bogus url no parameters', (done) => {
+    it('run JenkinsQueueJob with bogus url no parameters', async () => {
         const tp: string = path.join(__dirname, 'L0BogusUrlNoParameters.js');
         const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
 
-        try {
-            tr.run();
+        await tr.runAsync();
 
+        runValidations(() => {
             assert(tr.stderr.indexOf('Error: Invalid URI "bogusURL/crumbIssuer/api/xml?xpath=concat(//crumbRequestField,%22:%22,//crumb)"') != -1, 'should have written to stderr');
             assert(tr.failed, 'task should have failed');
-            done();
-        } catch (err) {
-            console.log(tr.stdout);
-            console.log(tr.stderr);
-            console.log(err);
-            done(err);
-        }
+        }, tr);
     });
 
-    it('run JenkinsQueueJob with bogus url with parameters', (done) => {
+    it('run JenkinsQueueJob with bogus url with parameters', async () => {
         const tp: string = path.join(__dirname, 'L0BogusUrlParameters.js');
         const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
 
-        try {
-            tr.run();
+        await tr.runAsync();
 
+        runValidations(() => {
             assert(tr.stderr.indexOf('Error: Invalid URI "bogusURL/crumbIssuer/api/xml?xpath=concat(//crumbRequestField,%22:%22,//crumb)"') != -1, 'should have written to stderr');
             assert(tr.failed, 'task should have failed');
-            done();
-        } catch (err) {
-            console.log(tr.stdout);
-            console.log(tr.stderr);
-            console.log(err);
-            done(err);
-        }
+        }, tr);
     });
 
-    it('[Job state] Run the longest test scenario of the state transitions', (done) => {
+    it('[Job state] Run the longest test scenario of the state transitions', () => {
         let currentState: JobState = JobState.New;
 
         // the longest scenario from possible
@@ -184,21 +137,73 @@ describe('JenkinsQueueJob L0 Suite', function () {
         }
 
         assert.deepEqual(expectedScenario, executedScenario);
-        done();
     });
 
-    it('[Job state] Check that transition rules are defined for all states', (done) => {
-        try {
-            const stateList = Object.keys(JobState).filter((element) => isNaN(Number(element)));
+    it('[Job state] Check that transition rules are defined for all states', () => {
+        const stateList = Object.keys(JobState).filter((element) => isNaN(Number(element)));
 
-            for (const testedState of stateList) {
-                for (const state of stateList) {
-                    checkStateTransitions(JobState[testedState], JobState[state]);
-                }
+        for (const testedState of stateList) {
+            for (const state of stateList) {
+                checkStateTransitions(JobState[testedState], JobState[state]);
             }
-            done();
-        } catch (error) {
-            done(error);
         }
     });
+
+    it('filters VSO commands from chunked Jenkins console output', async () => {
+        const chunks: Buffer[] = [];
+        const destination = new stream.Writable({
+            write: (chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void => {
+                chunks.push(Buffer.from(chunk));
+                callback();
+            }
+        });
+        const output = createJenkinsConsoleOutputStream(destination);
+        const ended = new Promise<void>((resolve, reject) => {
+            output.on('end', resolve);
+            output.on('error', reject);
+            destination.on('error', reject);
+        });
+
+        output.write('ordinary Jenkins output\n##vs');
+        output.end('o[task.setvariable variable=unsafe]value\n');
+        await ended;
+
+        assert.strictEqual(
+            Buffer.concat(chunks).toString('utf8'),
+            'ordinary Jenkins output\n##_vso[task.setvariable variable=unsafe]value\n'
+        );
+    });
+
+    it('marks Jenkins error response chunks as remote output', () => {
+        const data = 'Jenkins response ##vso[task.setvariable variable=unsafe]value';
+        let debugMessage: string;
+        let debugSource: string;
+        const originalDebugExternalOutput = tl.debugExternalOutput;
+        tl.debugExternalOutput = (message: string, options): void => {
+            debugMessage = message;
+            debugSource = options.source;
+        };
+
+        try {
+            const output = new StringWritable({ decodeStrings: false });
+            output._write(data, 'utf8', () => undefined);
+
+            assert.strictEqual(debugMessage, data);
+            assert.strictEqual(debugSource, 'remote');
+            assert.strictEqual(output.toString(), data);
+        } finally {
+            tl.debugExternalOutput = originalDebugExternalOutput;
+        }
+    });
+
+    function runValidations(validator: () => void, tr) {
+        try {
+            validator();
+        }
+        catch (error) {
+            console.log("STDERR", tr.stderr);
+            console.log("STDOUT", tr.stdout);
+            throw error;
+        }
+    }
 });

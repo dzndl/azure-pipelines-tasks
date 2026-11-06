@@ -1,11 +1,13 @@
 import tl = require('azure-pipelines-task-lib/task');
-import { AzureAppService } from 'azure-pipelines-tasks-azure-arm-rest-v2/azure-arm-app-service';
-import webClient = require('azure-pipelines-tasks-azure-arm-rest-v2/webClient');
+import { AzureAppService } from 'azure-pipelines-tasks-azure-arm-rest/azure-arm-app-service';
+import webClient = require('azure-pipelines-tasks-azure-arm-rest/webClient');
 var parseString = require('xml2js').parseString;
 import Q = require('q');
-import { Kudu } from 'azure-pipelines-tasks-azure-arm-rest-v2/azure-arm-app-service-kudu';
+import { Kudu } from 'azure-pipelines-tasks-azure-arm-rest/azure-arm-app-service-kudu';
 import { AzureDeployPackageArtifactAlias } from './Constants';
+import { AzureAppServiceUtility as AzureAppServiceUtilityCommon } from 'azure-pipelines-tasks-azure-arm-rest/azureAppServiceUtility';
 
+//todo replace this class with azure-arm-rest/azureAppServiceUtility
 export class AzureAppServiceUtility {
     private _appService: AzureAppService;
     constructor(appService: AzureAppService) {
@@ -119,13 +121,34 @@ export class AzureAppServiceUtility {
     }
 
     public async getKuduService(): Promise<Kudu> {
-        var publishingCredentials = await this._appService.getPublishingCredentials();
-        if(publishingCredentials.properties["scmUri"]) {
-            tl.setVariable(`AZURE_APP_SERVICE_KUDU_${this._appService.getSlot()}_PASSWORD`, publishingCredentials.properties["publishingPassword"], true);
-            return new Kudu(publishingCredentials.properties["scmUri"], publishingCredentials.properties["publishingUserName"], publishingCredentials.properties["publishingPassword"]);
-        }
+        
+        const utility = new AzureAppServiceUtilityCommon(this._appService);
+        return await utility.getKuduService();
 
-        throw Error(tl.loc('KuduSCMDetailsAreEmpty'));
+    }
+
+    public async isSitePublishingCredentialsEnabled(): Promise<boolean> {
+        const utility = new AzureAppServiceUtilityCommon(this._appService);
+        return await utility.isSitePublishingCredentialsEnabled();
+    }
+
+    public async getAuthToken(): Promise<string> {
+        // MSDeploy targets the Kudu/SCM endpoint, so it must use an App Service-audience
+        // token rather than the ARM-audience token returned by getToken(). Gated explicitly here
+        // - not just inside acquireTokenForScope - so disabling the ALLOWSCOPELEVELTOKEN pipeline
+        // feature is a reliable kill switch for this new code path even if a regression exists
+        // inside acquireTokenForScope itself: the legacy getToken() call is fully restored,
+        // unchanged, whenever the feature is off.
+        const credentials = this._appService._client.getCredentials();
+        let token: string;
+        if (tl.getPipelineFeature("ALLOWSCOPELEVELTOKEN")) {
+            token = await credentials.acquireTokenForScope("appservice");
+        } else {
+            tl.debug("ALLOWSCOPELEVELTOKEN is disabled; using the legacy ARM-audience token for MSDeploy.");
+            token = await credentials.getToken();
+        }
+        tl.setSecret(token);
+        return token;
     }
 
     public async getPhysicalPath(virtualApplication: string): Promise<string> {

@@ -13,7 +13,7 @@
   "author": "Microsoft Corporation",
   "version": {
     "Major": 0,
-    "Minor": 181,
+    "Minor": 283,
     "Patch": 0
   },
   "demands": [],
@@ -28,7 +28,7 @@
       "type": "string",
       "required": true,
       "helpMarkDown": "ms-resource:loc.input.help.dockerVersion",
-      "defaultValue": "17.09.0-ce"
+      "defaultValue": "28.5.2"
     },
     {
       "name": "releaseType",
@@ -47,11 +47,21 @@
   ],
   "instanceNameFormat": "ms-resource:loc.instanceNameFormat",
   "execution": {
-    "Node10": {
+    "Node16": {
       "target": "src//dockertoolinstaller.js"
+    },
+    "Node20_1": {
+      "target": "src//dockertoolinstaller.js",
+      "argumentFormat": ""
+    },
+    "Node24": {
+      "target": "src//dockertoolinstaller.js",
+      "argumentFormat": ""
     }
   },
   "messages": {
+    "InvalidReleaseType": "ms-resource:loc.messages.InvalidReleaseType",
+    "NightlyNotSupportedOnWindows": "ms-resource:loc.messages.NightlyNotSupportedOnWindows",
     "DownloadDockerFailedFromLocation": "ms-resource:loc.messages.DownloadDockerFailedFromLocation",
     "DockerNotFoundInFolder": "ms-resource:loc.messages.DockerNotFoundInFolder",
     "DockerDownloadFailed": "ms-resource:loc.messages.DockerDownloadFailed",

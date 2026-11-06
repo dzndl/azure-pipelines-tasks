@@ -39,7 +39,7 @@
   "loc.input.label.RuntimeStack": "运行时堆栈",
   "loc.input.help.RuntimeStack": "选择框架和版本。",
   "loc.input.label.RuntimeStackFunction": "运行时堆栈",
-  "loc.input.help.RuntimeStackFunction": "选择框架和版本。",
+  "loc.input.help.RuntimeStackFunction": "选择框架和版本。请查看[此文档](https://docs.microsoft.com/azure/azure-functions/functions-versions#languages)，了解受支持的运行时版本。\"DOCKER|microsoft/azure-functions-*\" 等旧值已被弃用，请使用下拉列表中的新值。",
   "loc.input.label.StartupCommand": "启动命令",
   "loc.input.help.StartupCommand": "输入启动命令。例如 <br/>dotnet exec filename.dll<br/>dotnet filename.dll",
   "loc.input.label.ScriptType": "部署脚本类型",
@@ -217,6 +217,7 @@
   "loc.messages.InvalidConnectionType": "无效的服务连接类型",
   "loc.messages.InvalidImageSourceType": "无效的映像源类型",
   "loc.messages.InvalidPublishProfile": "发布配置文件无效。",
+  "loc.messages.InvalidPublishProfileValue": "发布配置文件中“%s”的值包含不允许的字符。",
   "loc.messages.ASE_SSLIssueRecommendation": "要在应用服务中使用某个证书，该证书必须由受信任的证书颁发机构签名。如果 Web 应用显示证书验证错误，则使用的可能是自签名证书，要解决验证问题，需要在生成或发布管道中，将名为 VSTS_ARM_REST_IGNORE_SSL_ERRORS 的变量设置为 true 值",
   "loc.messages.ZipDeployLogsURL": "可以在 %s 查看 Zip 部署日志",
   "loc.messages.DeployLogsURL": "可在 %s 查看部署日志",
@@ -225,5 +226,7 @@
   "loc.messages.FailedToGetResourceID": "未能获取资源类型“%s”和资源名称“%s”的资源 ID。错误: %s",
   "loc.messages.JarPathNotPresent": "Java jar 路径不存在",
   "loc.messages.FailedToUpdateApplicationInsightsResource": "未能更新 Application Insights“%s”资源。错误: %s",
-  "loc.messages.RunFromZipPreventsFileInUseError": "从 Web 部署移动到 RunFrom 包，这有助于避免 FILE_IN_USE 错误。请注意，“从包运行”不支持 msBuild 包类型。请更改包格式以使用此部署方法。"
+  "loc.messages.RunFromZipPreventsFileInUseError": "从 Web 部署移动到 RunFrom 包，这有助于避免 FILE_IN_USE 错误。请注意，“从包运行”不支持 msBuild 包类型。请更改包格式以使用此部署方法。",
+  "loc.messages.MSDeployNotSupportTokenAuth": "应用服务配置为不使用基本身份验证。这需要 Web 部署 msdeploy.exe 7.1.7225 或更高版本。需要包含 msdeploy.exe 更新版本的 Visual Studio 版本。有关详细信息，请访问 https://aka.ms/azdo-webapp-msdeploy。",
+  "loc.messages.BasicAuthNotSupported": "应用服务配置为不使用基本身份验证，且无法使用 MSDeploy 令牌身份验证。"
 }

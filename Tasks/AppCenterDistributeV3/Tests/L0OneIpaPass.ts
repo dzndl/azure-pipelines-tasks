@@ -1,12 +1,12 @@
 
-import ma = require('vsts-task-lib/mock-answer');
-import tmrm = require('vsts-task-lib/mock-run');
+import ma = require('azure-pipelines-task-lib/mock-answer');
+import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 import fs = require('fs');
 import azureBlobUploadHelper = require('../azure-blob-upload-helper');
 import { basicSetup, mockFs, mockAzure } from './UnitTests/TestHelpers';
 
-const mockery = require('mockery');
+const libMocker = require('azure-pipelines-task-lib/lib-mocker');
 const nock = require('nock');
 
 let taskPath = path.join(__dirname, '..', 'appcenterdistribute.js');
@@ -33,6 +33,11 @@ nock('https://example.test')
         expiration_date: 1234567
     });
 
+nock('https://example.test')
+    .post('/v0.1/apps/testuser/testapp/releases/1/groups', {
+        id: "00000000-0000-0000-0000-000000000000",
+        mandatory_update: false
+    }).reply(200);
 // provide answers for task mock
 let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
     "checkPath": {
@@ -50,14 +55,14 @@ let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
 };
 tmr.setAnswers(a);
 
-mockFs();
+const mockedFs = { ...fs, ...mockFs() };
 
 mockAzure();
 
 tmr.registerMock('azure-blob-upload-helper', azureBlobUploadHelper);
-tmr.registerMock('fs', fs);
+tmr.registerMock('fs', mockedFs);
 
 tmr.run();
 
-mockery.deregisterMock('fs', fs);
-mockery.deregisterMock('azure-blob-upload-helper', azureBlobUploadHelper);
+libMocker.deregisterMock('fs');
+libMocker.deregisterMock('azure-blob-upload-helper');

@@ -5,6 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import * as url from "url";
 import { MatchOptions } from "azure-pipelines-task-lib/task";
+import { resolveRemoteFilePath } from "./ftputils";
 
 interface FtpOptions {
     // url
@@ -24,6 +25,7 @@ interface FtpOptions {
     cleanContents: boolean;
     preservePaths: boolean;
     trustSSL: boolean;
+    implicitFTPS: boolean;
     enableUtf8: boolean;
     customCmds: string[];
 }
@@ -53,12 +55,13 @@ class ProgressTracker {
         const total: number =
             this.progressFilesUploaded + this.progressDirectoriesProcessed;
         const remaining: number = this.fileCount - total;
-        console.log(
+        tl.writeExternalOutput(
             "files uploaded: " + this.progressFilesUploaded +
             ", directories processed: " + this.progressDirectoriesProcessed +
             ", total: " + total +
             ", remaining: " + remaining +
-            ", " + message
+            ", " + message + os.EOL,
+            { source: "repository" }
         );
     }
 
@@ -83,23 +86,23 @@ class ProgressTracker {
 
 function findFiles(ftpOptions: FtpOptions): string[] {
     tl.debug("Searching for files to upload");
-
     try {
         const rootFolderStats = tl.stats(ftpOptions.rootFolder);
         if (rootFolderStats.isFile()) {
             const file = ftpOptions.rootFolder;
-            tl.debug(file + " is a file. Ignoring all file patterns");
+            tl.debugExternalOutput(file + " is a file. Ignoring all file patterns", { source: "repository" });
             return [file];
         }
 
         const allFiles = tl.find(ftpOptions.rootFolder);
 
         // filePatterns is a multiline input containing glob patterns
-        tl.debug(
+        tl.debugExternalOutput(
             "searching for files using: " +
             ftpOptions.filePatterns.length +
             " filePatterns: " +
-            ftpOptions.filePatterns
+            ftpOptions.filePatterns,
+            { source: "repository" }
         );
 
         // minimatch options
@@ -112,7 +115,7 @@ function findFiles(ftpOptions: FtpOptions): string[] {
 
         tl.debug("Candidates found for match: " + allFiles.length);
         for (let i = 0; i < allFiles.length; i++) {
-            tl.debug("file: " + allFiles[i]);
+            tl.debugExternalOutput("file: " + allFiles[i], { source: "repository" });
         }
 
         // use a set to avoid duplicates
@@ -124,7 +127,7 @@ function findFiles(ftpOptions: FtpOptions): string[] {
                 path.normalize(ftpOptions.filePatterns[i])
             );
 
-            tl.debug("searching for files, pattern: " + normalizedPattern);
+            tl.debugExternalOutput("searching for files, pattern: " + normalizedPattern, { source: "repository" });
 
             const matched = tl.match(allFiles, normalizedPattern, undefined, matchOptions);
             tl.debug("Found total matches: " + matched.length);
@@ -135,14 +138,15 @@ function findFiles(ftpOptions: FtpOptions): string[] {
                 if (!ftpOptions.preservePaths && stats.isDirectory()) {
                     // if not preserving paths, skip all directories
                 } else if (matchingFilesSet.add(match)) {
-                    tl.debug(
-                        "adding " + (stats.isFile() ? "file:   " : "folder: ") + match
+                    tl.debugExternalOutput(
+                        "adding " + (stats.isFile() ? "file:   " : "folder: ") + match,
+                        { source: "repository" }
                     );
                     if (stats.isFile() && ftpOptions.preservePaths) {
                         // if preservePaths, make sure the parent directory is also included
                         let parent = path.normalize(path.dirname(match));
                         if (matchingFilesSet.add(parent)) {
-                            tl.debug("adding folder: " + parent);
+                            tl.debugExternalOutput("adding folder: " + parent, { source: "repository" });
                         }
                     }
                 }
@@ -152,7 +156,7 @@ function findFiles(ftpOptions: FtpOptions): string[] {
         return Array.from(matchingFilesSet).sort();
     }
     catch (err) {
-        tl.error(err);
+        tl.errorExternalOutput(String(err), { source: "repository" });
         tl.setResult(tl.TaskResult.Failed, tl.loc("UploadFailed"));
     }
 
@@ -166,22 +170,22 @@ function getFtpOptions(): FtpOptions {
 
     if (tl.getInput("credsType") === "serviceEndpoint") {
         // server endpoint
-        const serverEndpoint: string = tl.getInput("serverEndpoint", true);
+        const serverEndpoint: string = tl.getInput("serverEndpoint", true)!;
         serverEndpointUrl = url.parse(
-            tl.getEndpointUrl(serverEndpoint, false)
+            tl.getEndpointUrl(serverEndpoint, false)!
         );
 
         const serverEndpointAuth: tl.EndpointAuthorization = tl.getEndpointAuthorization(
             serverEndpoint,
             false
-        );
+        )!;
         username = serverEndpointAuth["parameters"]["username"];
         password = serverEndpointAuth["parameters"]["password"];
     } else {
         // user entered credentials directly
-        serverEndpointUrl = url.parse(tl.getInput("serverUrl", true));
-        username = tl.getInput("username", true);
-        password = tl.getInput("password", true);
+        serverEndpointUrl = url.parse(tl.getInput("serverUrl", true)!);
+        username = tl.getInput("username", true)!;
+        password = tl.getInput("password", true)!;
     }
 
     return {
@@ -190,34 +194,51 @@ function getFtpOptions(): FtpOptions {
         password: password,
 
         // other standard options
-        rootFolder: tl.getPathInput("rootFolder", true),
+        rootFolder: tl.getPathInput("rootFolder", true)!,
         filePatterns: tl.getDelimitedInput("filePatterns", "\n", true),
-        remotePath: tl.getInput("remotePath", true).trim().replace(/\\/gi, "/"), // use forward slashes always
+        remotePath: tl.getInput("remotePath", true)!.trim().replace(/\\/gi, "/"), // use forward slashes always
 
         // advanced options
         clean: tl.getBoolInput("clean", true),
         cleanContents: tl.getBoolInput("cleanContents", false),
         preservePaths: tl.getBoolInput("preservePaths", true),
         trustSSL: tl.getBoolInput("trustSSL", true),
+        implicitFTPS: tl.getBoolInput("implicitFTPS", false),
         enableUtf8: tl.getBoolInput("enableUtf8", false),
         customCmds: tl.getDelimitedInput("customCmds", "\n", false)
+
     };
 }
 
 function getAccessOption(options: FtpOptions): ftp.AccessOptions {
     const protocol = options.serverEndpointUrl.protocol;
-    const secure: boolean = protocol != undefined ? protocol.toLowerCase() === "ftps:" : false;
+    let secure: boolean | "implicit";
+    if (options.implicitFTPS) {
+        secure = "implicit";
+    }
+    else {
+       secure = !!protocol && protocol.toLowerCase() === "ftps:";
+    }
+
     const secureOptions: any = { rejectUnauthorized: !options.trustSSL };
 
     const hostName: string = options.serverEndpointUrl.hostname!;
     const portStr: string = options.serverEndpointUrl.port!;
-    let port: number = 21;
+    let port: number;
+
     if (portStr) {
         // port not explicitly specified, use default
         port = parseInt(portStr);
+    } else if (secure === "implicit") {
+        // port for implicit FTPS
+        port = 990;
+    }
+    else {
+        // port for FTP and explicit FTPS
+        port = 21;
     }
 
-    console.log(tl.loc("ConnectPort", hostName, port));
+    tl.writeExternalOutput(tl.loc("ConnectPort", hostName, port) + os.EOL, { source: "remote" });
 
     return {
         host: hostName,
@@ -231,16 +252,18 @@ function getAccessOption(options: FtpOptions): ftp.AccessOptions {
 
 async function getFtpClient(options: FtpOptions): Promise<ftp.Client> {
     const ftpClient = new ftp.Client();
-    ftpClient.ftp.log = tl.debug;
+    ftpClient.ftp.log = message => {
+        tl.debugExternalOutput(message, { source: "remote" });
+    };
     const accessOptions = getAccessOption(options);
     const response = await ftpClient.access(accessOptions);
     tl.debug("ftp client greeting");
-    console.log(tl.loc("FTPConnected", response.message));
+    const connectedMessage = tl.loc("FTPConnected", response.message);
+    tl.writeExternalOutput(connectedMessage + os.EOL, { source: "remote" });
 
     ftpClient.trackProgress(info => {
-        console.log(
-            `File: ${info.name} Type: ${info.type} Transferred: ${info.bytes}`
-        );
+        const progressMessage = `File: ${info.name} Type: ${info.type} Transferred: ${info.bytes}`;
+        tl.writeExternalOutput(progressMessage + os.EOL, { source: "remote" });
     });
 
     // Run custom commands upon connection
@@ -284,10 +307,12 @@ async function run() {
     }
    
     let ftpClient: ftp.Client;
+    let error: any | undefined;
     try {
         ftpClient = await getFtpClient(ftpOptions);
     } catch (err) {
-        tl.error(err);
+        error = err;
+        tl.errorExternalOutput(String(error), { source: "remote" });
         tl.setResult(tl.TaskResult.Failed, tl.loc("UploadFailed"));
         return;
     }
@@ -304,7 +329,8 @@ async function run() {
                 return;
             } catch (err) {
                 e = err;
-                tl.warning(err);
+                error = err;
+                tl.warningExternalOutput(String(error), { source: "remote" });
                 ftpClient.close();
 
                 await sleep(1000);
@@ -325,12 +351,12 @@ async function run() {
             await ftpClient.ensureDir(ftpOptions.remotePath);
         }, tries);
         if (ftpOptions.clean) {
-            console.log(tl.loc("CleanRemoteDir", ftpOptions.remotePath));
+            tl.writeExternalOutput(tl.loc("CleanRemoteDir", ftpOptions.remotePath) + os.EOL, { source: "repository" });
             await retryWithNewClient(async () => {
                 await ftpClient.removeDir(ftpOptions.remotePath);
             }, tries);
         } else if (ftpOptions.cleanContents) {
-            console.log(tl.loc("CleanRemoteDirContents", ftpOptions.remotePath));
+            tl.writeExternalOutput(tl.loc("CleanRemoteDirContents", ftpOptions.remotePath) + os.EOL, { source: "repository" });
             await retryWithNewClient(async () => {
                 await ftpClient.cd(ftpOptions.remotePath);
                 await ftpClient.clearWorkingDir();
@@ -343,16 +369,14 @@ async function run() {
         }, tries);
 
         for (const file of files) {
-            tl.debug("file: " + file);
-            let remoteFile: string = ftpOptions.preservePaths
-                ? path.join(
-                    ftpOptions.remotePath,
-                    file.substring(ftpOptions.rootFolder.length)
-                )
-                : path.join(ftpOptions.remotePath, path.basename(file));
+            tl.debugExternalOutput("file: " + file, { source: "repository" });
+            const relativePath: string = ftpOptions.preservePaths
+                ? file.substring(ftpOptions.rootFolder.length)
+                : path.basename(file);
 
+            let remoteFile: string = resolveRemoteFilePath(ftpOptions.remotePath, relativePath);
             remoteFile = remoteFile.replace(/\\/gi, "/"); // always use forward slashes
-            tl.debug("remoteFile: " + remoteFile);
+            tl.debugExternalOutput("remoteFile: " + remoteFile, { source: "repository" });
 
             let stats = tl.stats(file);
             if (stats.isDirectory()) {
@@ -369,13 +393,14 @@ async function run() {
             }
         }
 
-        console.log(tl.loc("UploadSucceedMsg", tracker.getSuccessStatusMessage()));
+        tl.writeExternalOutput(tl.loc("UploadSucceedMsg", tracker.getSuccessStatusMessage()) + os.EOL, { source: "repository" });
     } catch (err) {
-        tl.error(err);
-        console.log(tracker.getFailureStatusMessage());
+        error = err;
+        tl.errorExternalOutput(String(error), { source: "remote" });
+        tl.writeExternalOutput(tracker.getFailureStatusMessage() + os.EOL, { source: "repository" });
         tl.setResult(tl.TaskResult.Failed, tl.loc("UploadFailed"));
     } finally {
-        console.log(tl.loc("DisconnectHost", ftpOptions.serverEndpointUrl.host));
+        tl.writeExternalOutput(tl.loc("DisconnectHost", ftpOptions.serverEndpointUrl.host) + os.EOL, { source: "remote" });
         ftpClient.trackProgress(() => { });
         ftpClient.close();
     }

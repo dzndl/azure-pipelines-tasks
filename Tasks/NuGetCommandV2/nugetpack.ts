@@ -1,11 +1,12 @@
 import * as tl from "azure-pipelines-task-lib/task";
-import * as nutil from "packaging-common/nuget/Utility";
+import * as nutil from "azure-pipelines-tasks-packaging-common/nuget/Utility";
 import * as path from "path";
-import * as ngToolRunner from "packaging-common/nuget/NuGetToolRunner2";
-import * as packUtils from "packaging-common/PackUtilities";
-import INuGetCommandOptions from "packaging-common/nuget/INuGetCommandOptions2";
-import {IExecSyncResult} from "azure-pipelines-task-lib/toolrunner";
-import * as telemetry from 'utility-common/telemetry';
+import * as os from "os";
+import * as ngToolRunner from "azure-pipelines-tasks-packaging-common/nuget/NuGetToolRunner2";
+import * as packUtils from "azure-pipelines-tasks-packaging-common/PackUtilities";
+import INuGetCommandOptions from "azure-pipelines-tasks-packaging-common/nuget/INuGetCommandOptions2";
+import { IExecOptions } from "azure-pipelines-task-lib/toolrunner";
+import * as telemetry from "azure-pipelines-tasks-utility-common/telemetry";
 
 class PackOptions implements INuGetCommandOptions {
     constructor(
@@ -42,26 +43,22 @@ export async function run(nuGetPath: string): Promise<void> {
     let toolPackage = tl.getBoolInput("toolPackage");
     let outputDir = undefined;
 
-    try
-    {
+    try {
         // If outputDir is not provided then the root working directory is set by default.
         // By requiring it, it will throw an error if it is not provided and we can set it to undefined.
         outputDir = tl.getPathInput("outputDir", true);
     }
-    catch(error)
-    {
+    catch (error) {
         outputDir = undefined;
     }
 
-    try{
-        if(versioningScheme !== "off" && includeRefProj)
-        {
+    try {
+        if (versioningScheme !== "off" && includeRefProj) {
             tl.warning(tl.loc("Warning_AutomaticallyVersionReferencedProjects"));
         }
 
         let version: string = undefined;
-        switch(versioningScheme)
-        {
+        switch (versioningScheme) {
             case "off":
                 break;
             case "byPrereleaseNumber":
@@ -73,8 +70,7 @@ export async function run(nuGetPath: string): Promise<void> {
             case "byEnvVar":
                 tl.debug(`Getting version from env var: ${versionEnvVar}`);
                 version = tl.getVariable(versionEnvVar);
-                if(!version)
-                {
+                if (!version) {
                     tl.setResult(tl.TaskResult.Failed, tl.loc("Error_NoValueFoundForEnvVar"));
                     break;
                 }
@@ -82,25 +78,22 @@ export async function run(nuGetPath: string): Promise<void> {
             case "byBuildNumber":
                 tl.debug("Getting version number from build number")
 
-                if(tl.getVariable("SYSTEM_HOSTTYPE") === "release")
-                {
+                if (tl.getVariable("SYSTEM_HOSTTYPE") === "release") {
                     tl.setResult(tl.TaskResult.Failed, tl.loc("Error_AutomaticallyVersionReleases"));
                     return;
                 }
 
-                let buildNumber: string =  tl.getVariable("BUILD_BUILDNUMBER");
+                let buildNumber: string = tl.getVariable("BUILD_BUILDNUMBER");
                 tl.debug(`Build number: ${buildNumber}`);
 
                 let versionRegex = /\d+\.\d+\.\d+(?:\.\d+)?/;
                 let versionMatches = buildNumber.match(versionRegex);
-                if (!versionMatches)
-                {
+                if (!versionMatches) {
                     tl.setResult(tl.TaskResult.Failed, tl.loc("Error_NoVersionFoundInBuildNumber"));
                     return;
                 }
 
-                if (versionMatches.length > 1)
-                {
+                if (versionMatches.length > 1) {
                     tl.warning(tl.loc("Warning_MoreThanOneVersionInBuildNumber"))
                 }
 
@@ -110,8 +103,7 @@ export async function run(nuGetPath: string): Promise<void> {
 
         tl.debug(`Version to use: ${version}`);
 
-        if(outputDir && !tl.exist(outputDir))
-        {
+        if (outputDir && !tl.exist(outputDir)) {
             tl.debug(`Creating output directory: ${outputDir}`);
             tl.mkdirP(outputDir);
         }
@@ -134,12 +126,10 @@ export async function run(nuGetPath: string): Promise<void> {
         });
 
         let props: string[] = [];
-        if(configuration && configuration !== "$(BuildConfiguration)")
-        {
+        if (configuration && configuration !== "$(BuildConfiguration)") {
             props.push(`Configuration=${configuration}`);
         }
-        if(propertiesInput)
-        {
+        if (propertiesInput) {
             props = props.concat(propertiesInput.split(";"));
         }
 
@@ -161,7 +151,7 @@ export async function run(nuGetPath: string): Promise<void> {
             environmentSettings);
 
         for (const file of filesList) {
-            pack(file, packOptions);
+            await pack(file, packOptions);
         }
     } catch (err) {
         tl.error(err);
@@ -169,8 +159,8 @@ export async function run(nuGetPath: string): Promise<void> {
     }
 }
 
-function pack(file: string, options: PackOptions): IExecSyncResult {
-    console.log(tl.loc("Info_AttemptingToPackFile") + file);
+async function pack(file: string, options: PackOptions): Promise<number> {
+    tl.writeExternalOutput(tl.loc("Info_AttemptingToPackFile") + file + os.EOL, { source: "repository" });
 
     let nugetTool = ngToolRunner.createNuGetToolRunner(options.nuGetPath, options.environment, undefined);
     nugetTool.arg("pack");
@@ -210,12 +200,23 @@ function pack(file: string, options: PackOptions): IExecSyncResult {
         nugetTool.arg(options.verbosity);
     }
 
-    let execResult = nugetTool.execSync();
-    if (execResult.code !== 0) {
-        telemetry.logResult('Packaging', 'NuGetCommand', execResult.code);
+    // Listen for stderr output to write timeline results for the build.
+    let stdErrText = "";
+    nugetTool.on('stderr', (data: Buffer) => {
+        stdErrText += data.toString('utf-8');
+    });
+
+    const execResult = await nugetTool.exec({
+        ignoreReturnCode: true,
+        externalOutput: { source: "childProcess" }
+    } as IExecOptions);
+
+    if (execResult !== 0) {
+        telemetry.logResult('Packaging', 'NuGetCommand', execResult);
         throw tl.loc("Error_NugetFailedWithCodeAndErr",
-            execResult.code,
-            execResult.stderr ? execResult.stderr.trim() : execResult.stderr);
+            execResult,
+            stdErrText.trim());
     }
+
     return execResult;
 }

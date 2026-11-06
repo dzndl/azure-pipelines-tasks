@@ -26,15 +26,19 @@
   "loc.input.help.CustomTargetAzurePs": "Preferred Azure PowerShell Version needs to be a proper semantic version eg. 1.2.3. Regex like 2.\\*,2.3.\\* is not supported. The Hosted VS2017 Pool currently supports Az module version: 1.0.0, 1.6.0, 2.3.2, 2.6.0, 3.1.0",
   "loc.input.label.pwsh": "Use PowerShell Core",
   "loc.input.help.pwsh": "If this is true, then on Windows the task will use pwsh.exe from your PATH instead of powershell.exe.",
+  "loc.input.label.validateScriptSignature": "Validate script signature",
+  "loc.input.help.validateScriptSignature": "If this is true, then the task will first check to make sure specified script is signed and valid before executing it.",
   "loc.input.label.workingDirectory": "Working Directory",
   "loc.input.help.workingDirectory": "Working directory where the script is run.",
   "loc.messages.GeneratingScript": "Generating script.",
   "loc.messages.JS_FormattedCommand": "Formatted command: %s",
   "loc.messages.InvalidScriptArguments0": "Invalid script arguments '{0}'. Line breaks are not allowed.",
+  "loc.messages.ScriptArgsSanitized": "Detected characters in arguments that may not be executed correctly by the shell. Please escape special characters using backslash (\\). More information is available here: https://aka.ms/ado/75787",
   "loc.messages.InvalidScriptPath0": "Invalid script path '{0}'. Invalid path characters specified.",
   "loc.messages.InvalidAzurePsVersion": "The Azure PowerShell version '{0}' specified is not in the correct format. Please check the format. An example of correct format is 1.0.1",
   "loc.messages.JS_ExitCode": "PowerShell exited with code '%s'.",
   "loc.messages.JS_Stderr": "PowerShell wrote one or more lines to the standard error stream.",
   "loc.messages.ExpiredServicePrincipal": "Could not fetch access token for Azure. Verify if the Service Principal used is valid and not expired.",
-  "loc.messages.PS_ExitCode": "PowerShell exited with code '{0}'."
+  "loc.messages.PS_ExitCode": "PowerShell exited with code '{0}'.",
+  "loc.messages.Az_LowerVersionWarning": "Specified {0} version {1} is out of date, the latest version is {2}"
 }

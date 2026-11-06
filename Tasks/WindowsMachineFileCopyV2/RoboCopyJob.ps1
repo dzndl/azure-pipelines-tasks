@@ -1,15 +1,36 @@
-﻿$CopyJob = {
+﻿$featureFlags = @{
+    ModifyNumberOfRetriesInRobocopy = [System.Convert]::ToBoolean($env:MODIFY_NUMBER_OF_RETRIES_IN_ROBOCOPY)
+} 
+$ModifyRoboCopyRetries= $featureFlags.ModifyNumberOfRetriesInRobocopy
+
+$CopyJob = {
 param (
     [string]$fqdn, 
     [string]$sourcePath,
     [string]$targetPath,
     [object]$credential,
     [string]$cleanTargetBeforeCopy,
-    [string]$additionalArguments,
-    [string]$scriptRoot
+    $additionalArguments,
+    [string]$scriptRoot,
+    [string]$useSanitizerActivate,
+    [bool]$enableWindowsMachineFileCopyArgumentsHardening
     )
-    Import-Module "$scriptRoot\ps_modules\VstsTaskSdk" 
+    Import-Module "$scriptRoot\ps_modules\VstsTaskSdk" -ArgumentList @{ NonInteractive = $true }
     Import-VstsLocStrings -LiteralPath $scriptRoot/Task.json
+    Import-Module "$scriptRoot\ps_modules\ExternalOutputSanitizer"
+    $vsoCommandMode = if (Get-VstsPipelineFeature -FeatureName 'EnableVsoCommandBlockingRMTasks') {
+        'blockAndTelemetry'
+    } else {
+        'telemetryOnly'
+    }
+
+    # Clean-Target uses Split-AdditionalArguments from Sanitizer. The parallel-copy
+    # path runs this scriptblock through Start-Job in a separate process, where the
+    # calling script's imports are not present, so it has to be imported here too.
+    if ($enableWindowsMachineFileCopyArgumentsHardening)
+    {
+        Import-Module "$scriptRoot\ps_modules\Sanitizer"
+    }
 
     . "$scriptRoot/Utility.ps1"
 
@@ -100,11 +121,24 @@ param (
 
     function Clean-Target
     {
-        $cleanupArgument = "/NOCOPY /E /PURGE" 
+        if(-not $ModifyRoboCopyRetries){
+          $cleanupArgument = "/NOCOPY /E /PURGE" 
+        }
+        else{
+          $cleanupArgument = "/NOCOPY /E /PURGE /R:3 " 
+        }
         $guid = [GUID]::NewGuid()
         $tempDirectory = "$scriptRoot\temp$guid" 
         New-Item -ItemType Directory -Force -Path $tempDirectory         
-        Invoke-Expression "robocopy `"$tempDirectory`" `"$destinationNetworkPath`" `"*.*`" $cleanupArgument"
+        if ($enableWindowsMachineFileCopyArgumentsHardening)
+        {
+            $cleanupArguments = @($tempDirectory, $destinationNetworkPath, "*.*") + (Split-AdditionalArguments -additionalArguments $cleanupArgument.Trim())
+            & robocopy @cleanupArguments | Protect-ExternalOutput -Source 'childProcess' -VsoCommandMode $vsoCommandMode
+        }
+        else
+        {
+            Invoke-Expression "robocopy `"$tempDirectory`" `"$destinationNetworkPath`" `"*.*`" $cleanupArgument" | Protect-ExternalOutput -Source 'childProcess' -VsoCommandMode $vsoCommandMode
+        }
         Remove-Item $tempDirectory -Recurse -ErrorAction Ignore
     }
 
@@ -123,11 +157,38 @@ param (
     }    
 
     function Get-RoboCopyParameters(
-        [string]$additionalArguments,
-        [switch]$fileCopy
+        $additionalArguments,
+        [switch]$fileCopy,
+        [switch]$AsArray
         )
     {
-        $robocopyParameters = "/COPY:DAT "
+        if ($AsArray.IsPresent)
+        {
+            $fixedFlags = @("/COPY:DAT")
+            if($ModifyRoboCopyRetries){
+              $fixedFlags += "/R:3"
+            }
+
+            if(-not $fileCopy.IsPresent)
+            {
+                $fixedFlags += "/E"
+            }
+
+            $additionalArgumentArray = @($additionalArguments)
+            if ($additionalArgumentArray.Count -eq 1 -and [string]::IsNullOrWhiteSpace($additionalArgumentArray[0]))
+            {
+                $additionalArgumentArray = @()
+            }
+
+            return $fixedFlags + $additionalArgumentArray
+        }
+
+        if(-not $ModifyRoboCopyRetries){
+          $robocopyParameters = "/COPY:DAT "
+        }
+        else{
+          $robocopyParameters = "/COPY:DAT /R:3 "
+        }
 
         if(-not $fileCopy.IsPresent)
         {
@@ -141,6 +202,7 @@ param (
 
         return $robocopyParameters.Trim()
     }
+
 
     function Get-MachineShare(
         [string]$fqdn,
@@ -235,10 +297,28 @@ param (
 
     try
     {
-        $robocopyParameters = Get-RoboCopyParameters -additionalArguments $additionalArguments -fileCopy:$isFileCopy
+        if (-not $enableWindowsMachineFileCopyArgumentsHardening)
+        {
+            $robocopyParameters = Get-RoboCopyParameters -additionalArguments $additionalArguments -fileCopy:$isFileCopy
+        }
 
-        $command = "robocopy `"$sourceDirectory`" `"$destinationNetworkPath`" `"$filesToCopy`" $robocopyParameters"
-        Invoke-Expression $command
+        if ($enableWindowsMachineFileCopyArgumentsHardening)
+        {
+            $robocopyExtraArguments = Get-RoboCopyParameters -additionalArguments $additionalArguments -fileCopy:$isFileCopy -AsArray
+            $robocopyArguments = @($sourceDirectory, $destinationNetworkPath, $filesToCopy) + $robocopyExtraArguments
+            & robocopy @robocopyArguments | Protect-ExternalOutput -Source 'childProcess' -VsoCommandMode $vsoCommandMode
+        }
+        elseif ($useSanitizerActivate -eq "true")
+        {
+            $sanitizedArguments = [regex]::Split($robocopyParameters, ' (?=(?:[^"]|"[^"]*")*$)')
+            & robocopy "$sourceDirectory" "$destinationNetworkPath" "$filesToCopy" $sanitizedArguments | Protect-ExternalOutput -Source 'childProcess' -VsoCommandMode $vsoCommandMode
+        }
+        else
+        {
+            $command = "robocopy `"$sourceDirectory`" `"$destinationNetworkPath`" `"$filesToCopy`" $robocopyParameters"
+            Invoke-Expression $command | Protect-ExternalOutput -Source 'childProcess' -VsoCommandMode $vsoCommandMode
+        }
+
         if ($LASTEXITCODE -ge 8)
         {
             $errorMessage = Get-VstsLocString -Key "WFC_CopyingFailedConsultRobocopyLogsForMoreDetails"
@@ -249,6 +329,10 @@ param (
             $message = (Get-VstsLocString -Key "WFC_CopyingRecurivelyFrom0to1MachineSucceed" -ArgumentList $sourcePath, $targetPath, $fqdn)
             Write-Output $message
         }
+    }
+    catch {
+        Write-VstsTaskError -Message $_.Exception.Message
+        Write-VstsSetResult -Result 'Failed' -Message "Error detected" -DoNotThrow
     }
     finally
     {

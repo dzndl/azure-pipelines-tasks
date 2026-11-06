@@ -1,14 +1,21 @@
 {
   "name": "AzureResourceManagerTemplateDeployment",
   "main": "main.js",
+  "scripts": {
+    "build": "node ../../make.js build --task AzureResourceManagerTemplateDeploymentV3",
+    "serverBuild": "node ../../make.js serverBuild --task AzureResourceManagerTemplateDeploymentV3"
+  },
   "dependencies": {
-    "@types/node": "^10.17.0",
-    "azure-pipelines-task-lib": "^3.0.6-preview.0",
-    "azure-pipelines-tasks-azure-arm-rest-v2": "^2.0.5",
-    "moment": "2.21.0",
-    "typed-rest-client": "1.7.3"
+    "@types/node": "^24.10.0",
+    "agent-base": "^6.0.2",
+    "azure-pipelines-task-lib": "^5.281.0",
+    "azure-pipelines-tasks-artifacts-common": "^2.281.0",
+    "azure-pipelines-tasks-azure-arm-rest": "^3.281.0",
+    "moment": "^2.29.4",
+    "typed-rest-client": "^3.1.2",
+    "uuid": "^8.3.2"
   },
   "devDependencies": {
-    "typescript": "4.0.2"
+    "typescript": "^5.7.2"
   }
 }

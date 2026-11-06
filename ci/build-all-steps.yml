@@ -1,5 +1,26 @@
 parameters:
-  os: ''
+- name: os
+  type: string
+  default: ''
+- name: useSemverBuildConfig
+  type: boolean
+  default: false
+- name: generateReleaseNotes
+  type: boolean
+  default: true
+- name: signTasks
+  type: boolean
+  default: false
+- name: nodeModulesSigningMode
+  type: string
+  default: 'None'
+  values:
+  - 'None'
+  - 'Catalog signing'
+  - 'Individual file signing'
+- name: catalogGenerationThrottle
+  type: number
+  default: 4
 
 steps:
 
@@ -15,73 +36,180 @@ steps:
     displayName: Start collect diagnostics
     condition: and(succeeded(), eq(variables.collect_diagnostics, 'true'))
 
-# Use node 8, npm 5
-- task: NodeTool@0
-  displayName: Use node 8
+# Use .NET SDK 10
+- task: UseDotNet@2
+  displayName: 'Install .NET Core SDK 10.x'
   inputs:
-    versionSpec: "8.x"
+    version: 10.x
 
-- script: npm i -g npm@6.9.0 --force
-  displayName: Use npm version 6.9.0
+# Use node 20, npm 9
+- task: UseNode@1
+  displayName: Use node 20
+  inputs:
+    version: 20.20.x
 
-# npm install
-- script: npm install
-  displayName: npm install
+- task: NpmAuthenticate@0
+  inputs:
+    workingFile: .npmrc
+
+# npm ci
+- script: npm ci
+  displayName: npm ci
+
+- script: |
+    echo "##[error]PRs from fork repositories forbidden. Create PR directly."
+    exit 1
+  displayName: Check Is Forked PR
+  condition: eq(variables['SYSTEM.PULLREQUEST.ISFORK'], 'true')
+
+# Verify min agent demands
+# TEMPORARILY DISABLED: This check calls the GitHub API to fetch the latest agent
+# release, which requires a GitHub PAT. The classic PAT is blocked by the
+# 'Microsoft Open Source' enterprise policy (token lifetime > 8 days). Re-enable
+# once proper auth (e.g. a GitHub App installation token) is set up.
+# - script: |
+#     cd ci/verifyMinAgentDemands
+#     npm ci
+#   displayName: npm ci min agent demands
+#
+# - script: node ./ci/verifyMinAgentDemands/index.js
+#   env:
+#     GITHUB_PAT: $(GitHubPAT)
+#   displayName: Verify min agent demands
+
+- script: node ./ci/verify-registries.js
+  displayName: Verify registries
 
 # Filter out unchanged tasks
 - script: node ./ci/filter-tasks.js
   displayName: Filter out unchanged tasks
+  name: getTaskPattern
   env:
     PACKAGE_ENDPOINT: $(Package.Endpoint)
-    PACKAGE_TOKEN: $(Package.Token)
+    PACKAGE_TOKEN: $(System.AccessToken)
 
-# Verify min agent version demands
-- script: |
-    cd ci
-    cd verifyMinAgentDemands
-    npm install
-    node index.js
-  displayName: Verify all min agent demands are valid
+- script: node ./ci/before-build-check-tasks.js
+  displayName: Before build task validation
+  condition: |
+    and(
+      succeeded(),
+      eq(variables['build.reason'], 'PullRequest'),
+      ne(variables['numTasks'], 0)
+    )
 
-# Build
-- script: node make.js build --task "$(task_pattern)"
-  displayName: Build
-  condition: ne(variables['numTasks'], 0)
+- script: dotnet run --project BuildConfigGen/BuildConfigGen.csproj --no-launch-profile  -- --all-tasks
+  displayName: Verify generated files across tasks are up-to-date (Ensure BuildConfigGen outputs are consistent)
+  condition: eq(${{ parameters.useSemverBuildConfig }}, false)
 
-# Only on Windows:
-- ${{ if eq(parameters.os, 'Windows_NT') }}:
+- script: dotnet run --project BuildConfigGen/BuildConfigGen.csproj --no-launch-profile  -- --all-tasks --use-semver-build-config
+  displayName: Verify generated files across tasks are up-to-date (Ensure BuildConfigGen outputs are consistent)
+  condition: eq(${{ parameters.useSemverBuildConfig }}, true)
 
-  # Stage tasks individually into the package directory
-  - script: node ./ci/stage-package.js individually
-    displayName: Stage tasks individually into the package directory
-    condition: and(succeeded(), ne(variables['build.reason'], 'PullRequest'), ne(variables['numTasks'], 0))
+- powershell: ./ci/set-sprint-variables.ps1
+  displayName: Set currentSprint variables
 
-  # Sign all task zips as nuget packages
-  - template: sign-all-tasks.yml
-    parameters:
-      layoutRoot: $(Build.SourcesDirectory)\_package\tasks-layout
+- script: node ./ci/check-downgrading.js --task "$(task_pattern_fordowngradingcheck)" --sprint $(currentSprint) --week $(currentSprintWeek)
+  displayName: Check for downgrading tasks
+  # remove SourceBranch condition after merging users/merlynop/node20merge-2 ; see https://github.com/microsoft/azure-pipelines-tasks/pull/20819
+  condition: |
+    and(
+      succeeded(),
+      ne(variables['numTasksForDowngradingCheck'], 0),
+      ne(variables['COURTESY_PUSH'], 'true'),
+      eq(variables['build.reason'], 'PullRequest'),
+      eq(variables['System.PullRequest.TargetBranch'], 'master'),
+      not(contains(variables['System.PullRequest.SourceBranch'], 'users/bhatibhavesh/concurrentbuild'))
+    )
 
-  # Stage all the tasks into a single zip for upload
-  - script: node ./ci/stage-package.js
-    displayName: Stage all the tasks into a single zip for upload
-    condition: and(succeeded(), ne(variables['build.reason'], 'PullRequest'), ne(variables['numTasks'], 0))
+# Clean
+- script: node make.js clean
+  displayName: Clean tasks
 
-  # Publish artifact
-  - task: PublishBuildArtifacts@1
-    displayName: Publish package artifact
-    condition: and(succeeded(), ne(variables['build.reason'], 'PullRequest'), ne(variables['numTasks'], 0))
-    inputs:
-      pathToPublish: _package/tasks.zip
-      artifactName: package
-      publishLocation: container
+# Build Tasks
+- script: node make.js serverBuild --task "$(getTaskPattern.task_pattern)" $(includeLocalPackagesBuildConfigParameter) --fast-build $(IS_FAST_BUILD_ENABLED)
+  displayName: Build Tasks
+  condition: and(succeeded(), ne(variables['numTasks'], 0), eq('${{ parameters.useSemverBuildConfig }}', false))
+  env:
+    PACKAGE_TOKEN: $(System.AccessToken)
+
+- script: node make.js serverBuild --task "$(getTaskPattern.task_pattern)" $(includeLocalPackagesBuildConfigParameter) --useSemverBuildConfig true --fast-build $(IS_FAST_BUILD_ENABLED)
+  displayName: Build Tasks
+  condition: and(succeeded(), ne(variables['numTasks'], 0), eq('${{ parameters.useSemverBuildConfig }}', true))
+  env:
+    PACKAGE_TOKEN: $(System.AccessToken)
+
+- script: node ./ci/after-build-check-tasks.js
+  displayName: After build tasks validation
+  condition: |
+    and(
+      succeeded(),
+      eq(variables['build.reason'], 'PullRequest'),
+      ne(variables['numTasks'], 0)
+    )
+
+# Check diff for task sources
+- script: node ./ci/verify-source-changes.js "$(getTaskPattern.task_pattern)"
+  displayName: Verify task source changes
+  condition: |
+    and(
+      succeeded(),
+      ne(variables['Build.SourceBranch'], 'refs/heads/master'),
+      ne(variables['COURTESY_PUSH'], 'true'),
+      ne(variables['numTasks'], 0)
+    )
 
 # Test
 - script: node make.js test
   displayName: Run tests
-  condition: ne(variables['numTasks'], 0)
-- script: node make.js testLegacy --task "$(task_pattern)"
+  condition: and(succeeded(), ne(variables['numTasks'], 0), ne(variables['tasksSkipTests'], 'true'))
+
+- script: node make.js testLegacy --task "$(getTaskPattern.task_pattern)"
   displayName: Legacy tests with node 6
-  condition: ne(variables['numTasks'], 0)
+  condition: and(succeeded(), ne(variables['numTasks'], 0), ne(variables['tasksSkipTests'], 'true'))
+
+# Publish code coverage result
+- task: PublishCodeCoverageResults@1
+  displayName: Publish Code Coverage Results
+  inputs:
+    codeCoverageTool: Cobertura
+    summaryFileLocation: $(System.DefaultWorkingDirectory)/_build/coverage/*coverage.xml
+
+# Only on Windows:
+- ${{ if eq(parameters.os, 'Windows_NT') }}:
+
+  # Sign the built task files before they are staged and zipped
+  - ${{ if parameters.signTasks }}:
+    - template: /ci/sign-task-files.yml@self
+      parameters:
+        tasksRoot: $(Build.SourcesDirectory)\_build\Tasks
+        nodeModulesSigningMode: ${{ parameters.nodeModulesSigningMode }}
+        catalogGenerationThrottle: ${{ parameters.catalogGenerationThrottle }}
+
+  # Stage tasks individually into the package directory
+  - script: node ./ci/stage-package.js true individually
+    displayName: Stage tasks individually into the package directory
+    condition: |
+      and(
+        succeeded(),
+        ne(variables['build.reason'], 'PullRequest'),
+        ne(variables['numTasks'], 0)
+      )
+
+  # Sign all task zips as nuget packages
+  - ${{ if parameters.signTasks }}:
+    - template: /ci/sign-all-tasks.yml@self
+      parameters:
+        layoutRoot: $(Build.SourcesDirectory)\_package\tasks-layout
+
+  # Stage all the tasks into a single zip for upload
+  - script: node ./ci/stage-package.js
+    displayName: Stage all the tasks into a single zip for upload
+    condition: |
+      and(
+        succeeded(),
+        ne(variables['build.reason'], 'PullRequest'),
+        ne(variables['numTasks'], 0)
+      )
 
 # Only when building on Windows:
 - ${{ if eq(parameters.os, 'Windows_NT') }}:
@@ -89,25 +217,9 @@ steps:
   # Stop collect diagnostics
   - powershell: ./ci/stop-collect-diagnostics.ps1
     displayName: Stop collect diagnostics
-    condition: and(always(), eq(variables.collect_diagnostics, 'true'), ne(variables['numTasks'], 0))
-
-  - powershell: |
-      # Build the release branch name
-      $currentSprint = (Invoke-WebRequest https://whatsprintis.it/sprint -Headers @{"Accept"= "application/json"} | ConvertFrom-Json).sprint
-      $releaseBranch = "releases/m" + $currentSprint
-
-      # add config entry to avoid errors while pulling
-      git config --global user.email "$(username)@microsoft.com"
-      git config --global user.name "$(username)"
-
-      # Pull commits from remote and push branch to git
-      git checkout -b $releaseBranch
-      Write-Host 'Trying to pull the remote branch..'
-      git pull https://$(GitHubPAT)@github.com/microsoft/azure-pipelines-tasks $releaseBranch
-      if (-not $?) {
-        Write-Host 'Failed to pull the remote branch. This is expected if the remote branch doesn't exist.
-      }
-      Write-Host 'Trying to push to the remote branch..'
-      git push https://$(GitHubPAT)@github.com/microsoft/azure-pipelines-tasks $releaseBranch
-    condition: and(succeeded(), in(variables['build.reason'], 'Schedule', 'Manual'), eq(variables['COURTESY_PUSH'], 'true'))
-    displayName: Push release branch
+    condition: |
+      and(
+        always(),
+        eq(variables.collect_diagnostics, 'true'),
+        ne(variables['numTasks'], 0)
+      )

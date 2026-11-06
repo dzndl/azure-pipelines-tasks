@@ -1,6 +1,6 @@
 {
   "loc.friendlyName": "Déploiement d'application Service Fabric",
-  "loc.helpMarkDown": "[Learn more about this task](https://go.microsoft.com/fwlink/?LinkId=820528)",
+  "loc.helpMarkDown": "[En savoir plus sur cette tâche](https://go.microsoft.com/fwlink/?LinkId=820528)",
   "loc.description": "Déployer une application Azure Service Fabric sur un cluster",
   "loc.instanceNameFormat": "Déployer l'application Service Fabric",
   "loc.group.displayName.advanced": "Paramètres avancés",
@@ -85,8 +85,9 @@
   "loc.messages.PublishProfileRequiredServerThumbprint": "Une empreinte numérique de certificat de serveur doit être définie sur la connexion de service, ou un profil de publication doit être spécifié dans la tâche Azure Pipelines.",
   "loc.messages.PublishProfileRequiredAppParams": "Un fichier de paramètres d'application ou un profil de publication doit être spécifié dans la tâche Azure Pipelines.",
   "loc.messages.PublishProfileRequiredUpgrade": "Les paramètres de mise à niveau doivent être remplacés, ou un profil de publication doit être spécifié dans la tâche Azure Pipelines.",
-  "loc.messages.UnsupportedARMAuthScheme": "Unsupported authentication scheme '{0}' for ARM endpoint.",
+  "loc.messages.UnsupportedARMAuthScheme": "Schéma d'authentification '{0}' non pris en charge pour le point de terminaison ARM.",
   "loc.messages.UnsupportedContainerRegistryAuthScheme": "Modèle d'authentification '{0}' non pris en charge pour le registre de conteneurs Azure.",
+  "loc.messages.SFSDK_InvalidManifestPathSegment": "Valeur {0} non valide « {1} » trouvée dans le package d’application. Cette valeur est utilisée comme nom de dossier lors de la création d’un chemin d’accès au fichier à partir du package d’application. Elle doit donc être un nom simple : elle ne peut pas être vide, contenir un séparateur de chemin ou un segment de chemin relatif, être un chemin absolu, ni se terminer par le caractère « . » ou «   » que Windows supprimera lors de la normalisation.",
   "loc.messages.SFSDK_InvalidSFPackage": "{0} n'est pas un package d'application Service Fabric valide.",
   "loc.messages.SFSDK_PackageValidationFailed": "Échec de la validation du package : {0}",
   "loc.messages.SFSDK_UnableToVerifyClusterConnection": "Impossible de vérifier la connexion de service du cluster Service Fabric.",

@@ -5,6 +5,10 @@ import path = require('path');
 let taskPath = path.join(__dirname, '..', 'gradletask.js');
 let tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(taskPath);
 
+//  need to detect current dir (e.g. for Node20 it will be GradleV3_Node20\Tests)
+// __dirname - Current Dir(GradleV3\Tests)
+const gradleFolder = path.basename(path.join(__dirname, '..'))
+
  //escape for Windows directories
 let tempDir: string = path.join(__dirname, '_temp');
 let sqAnalysisDirReplaced: string = path.join(tempDir, '.sqAnalysis').replace(/\\/g, '/');
@@ -50,11 +54,11 @@ tr.setInput('pmdAnalysisEnabled', 'true');
 //construct a string that is JSON, call JSON.parse(string), send that to ma.TaskLibAnswers
 let myAnswers: string = `{
    "exec":{
-        "gradlew.bat build -I /GradleV3/node_modules/azure-pipelines-tasks-codeanalysis-common/checkstyle.gradle -I /GradleV3/node_modules/azure-pipelines-tasks-codeanalysis-common/findbugs.gradle -I /GradleV3/node_modules/azure-pipelines-tasks-codeanalysis-common/pmd.gradle": {
+        "gradlew.bat build -I /${gradleFolder}/node_modules/azure-pipelines-tasks-codeanalysis-common/checkstyle.gradle -I /${gradleFolder}/node_modules/azure-pipelines-tasks-codeanalysis-common/findbugs.gradle -I /${gradleFolder}/node_modules/azure-pipelines-tasks-codeanalysis-common/pmd.gradle": {
             "code": 0,
             "stdout": "Sample gradle + Checkstyle + PMD + FindBugs"
         },
-        "gradlew build -I /GradleV3/node_modules/azure-pipelines-tasks-codeanalysis-common/checkstyle.gradle -I /GradleV3/node_modules/azure-pipelines-tasks-codeanalysis-common/findbugs.gradle -I /GradleV3/node_modules/azure-pipelines-tasks-codeanalysis-common/pmd.gradle": {
+        "gradlew build -I /${gradleFolder}/node_modules/azure-pipelines-tasks-codeanalysis-common/checkstyle.gradle -I /${gradleFolder}/node_modules/azure-pipelines-tasks-codeanalysis-common/findbugs.gradle -I /${gradleFolder}/node_modules/azure-pipelines-tasks-codeanalysis-common/pmd.gradle": {
             "code": 0,
             "stdout": "Sample gradle + Checkstyle + PMD + FindBugs"
         }

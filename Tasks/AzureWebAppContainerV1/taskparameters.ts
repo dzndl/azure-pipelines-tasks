@@ -1,10 +1,10 @@
 import tl = require('azure-pipelines-task-lib/task');
-import { AzureResourceFilterUtility } from 'azure-pipelines-tasks-azurermdeploycommon/operations/AzureResourceFilterUtility';
-import { AzureEndpoint } from 'azure-pipelines-tasks-azurermdeploycommon/azure-arm-rest/azureModels';
-import { AzureRMEndpoint } from 'azure-pipelines-tasks-azurermdeploycommon/azure-arm-rest/azure-arm-endpoint';
-import { AzureAppService } from 'azure-pipelines-tasks-azurermdeploycommon/azure-arm-rest/azure-arm-app-service';
-import { PackageUtility } from 'azure-pipelines-tasks-azurermdeploycommon/webdeployment-common/packageUtility';
-import fs = require('fs');
+import { AzureAppService } from 'azure-pipelines-tasks-azure-arm-rest/azure-arm-app-service';
+import { AzureRMEndpoint } from 'azure-pipelines-tasks-azure-arm-rest/azure-arm-endpoint';
+import { Resources } from 'azure-pipelines-tasks-azure-arm-rest/azure-arm-resource';
+import { AzureEndpoint } from 'azure-pipelines-tasks-azure-arm-rest/azureModels';
+import { SiteContainer } from 'azure-pipelines-tasks-azure-arm-rest/SiteContainer';
+import { PackageUtility } from 'azure-pipelines-tasks-webdeployment-common/packageUtility';
 
 const osTypeMap = new Map([
     [ 'app,container,xenon', 'Windows' ],
@@ -30,18 +30,34 @@ export class TaskParametersUtility {
         taskParameters.azureEndpoint = await new AzureRMEndpoint(taskParameters.connectedServiceName).getEndpoint();
         console.log(tl.loc('GotconnectiondetailsforazureRMWebApp0', taskParameters.WebAppName));
 
+        if(taskParameters.AppSettings && taskParameters.AppSettings !== null)
+        {
+            taskParameters.AppSettings = taskParameters.AppSettings.replace('\n',' ');
+        }
+        
         let appDetails = await this.getWebAppKind(taskParameters);
         taskParameters.ResourceGroupName = appDetails["resourceGroupName"];
         taskParameters.OSType = appDetails["osType"];
-        taskParameters.isLinuxContainerApp = taskParameters.OSType && taskParameters.OSType.indexOf("Linux") !=-1;
+        taskParameters.isLinuxContainerApp = taskParameters.OSType && taskParameters.OSType.toLowerCase().indexOf("linux") !=-1;
+
+        // Used for SiteContainers apps.
+        const siteContainersConfigInput = tl.getInput('siteContainersConfig');
+        if (siteContainersConfigInput) {
+            const raw = JSON.parse(siteContainersConfigInput);
+            taskParameters.SiteContainers =  raw.map(SiteContainer.fromJson);
+        } else {
+
+        // Used for docker single/multicontainer apps.
+            taskParameters.SiteContainers = null;
+            
+            let containerDetails = await this.getContainerKind(taskParameters);
+            taskParameters.ImageName = containerDetails["imageName"];
+            taskParameters.isMultiContainer = containerDetails["isMultiContainer"];
+            taskParameters.MulticontainerConfigFile = containerDetails["multicontainerConfigFile"];
+        }
 
         var endpointTelemetry = '{"endpointId":"' + taskParameters.connectedServiceName + '"}';
         console.log("##vso[telemetry.publish area=TaskEndpointId;feature=AzureRmWebAppDeployment]" + endpointTelemetry);
-
-        let containerDetails = await this.getContainerKind(taskParameters);
-        taskParameters.ImageName = containerDetails["imageName"];
-        taskParameters.isMultiContainer = containerDetails["isMultiContainer"];
-        taskParameters. MulticontainerConfigFile = containerDetails["multicontainerConfigFile"];
 
         return taskParameters;
     }
@@ -50,10 +66,11 @@ export class TaskParametersUtility {
         let resourceGroupName: string = (taskParameters.DeployToSlotOrASEFlag) ? taskParameters.ResourceGroupName : "";
         let osType: string;
         if (!resourceGroupName) {
-            var appDetails = await AzureResourceFilterUtility.getAppDetails(taskParameters.azureEndpoint, taskParameters.WebAppName);
+            var resources = new Resources(taskParameters.azureEndpoint);
+            var appDetails = await resources.getAppDetails(taskParameters.WebAppName);
             resourceGroupName = appDetails["resourceGroupName"];
             osType = osTypeMap.get(appDetails["kind"]) ? osTypeMap.get(appDetails["kind"]) : appDetails["kind"];
-            
+
             tl.debug(`Resource Group: ${resourceGroupName}`);
         }
         else {
@@ -120,4 +137,5 @@ export interface TaskParameters {
     isLinuxContainerApp?: boolean;
     MulticontainerConfigFile?: string;
     isMultiContainer?: boolean;
+    SiteContainers?: SiteContainer[];
 }

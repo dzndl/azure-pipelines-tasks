@@ -1,26 +1,12 @@
-import * as path from 'path';
-import * as assert from 'assert';
-import * as ttm from 'azure-pipelines-task-lib/mock-test';
-import * as tl from "azure-pipelines-task-lib";
+// PipAuthenticate L0 Test Suite
+// This file imports all grouped test files
 
-describe('Pip Authenticate V1 Suite', function () {
-    before(() => {
-    });
-
-    after(() => {
-    });
-
-    it('sets authentication for current organization feed', (done: MochaDone) => {
-        this.timeout(1000);
-        let tp = path.join(__dirname, './setAuthInternalFeed.js')
-        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
-
-        tr.run();
-        assert(tr.invokedToolCount == 0, 'no tool should be invoked.');
-        assert(tr.succeeded, 'should have succeeded');
-        assert.equal(tr.errorIssues.length, 0, "should have no errors");
-        assert(tr.stdOutContained('Successfully added auth for 1 internal feeds and 0 external endpoint'),
-        'it should have succeeded in adding auth for 1 feed');
-        done();
-    });
-});
+import './L0.Authentication';
+import './L0.TokenHandling';
+import './L0.ErrorHandling';
+import './L0.Telemetry';
+import './L0.InputValidation';
+#if WIF
+import './L0.WIF';
+import './L0.URLValidation';
+#endif

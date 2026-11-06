@@ -1,13 +1,16 @@
 # Table of Contents
+- [Table of Contents](#table-of-contents)
 - [Contributing](#contributing)
 - [PR Submission](#pr-submission)
 - [Prerequisites: Node and Npm](#prerequisites-node-and-npm)
 - [Install Dependencies](#install-dependencies)
 - [Build and Test](#build-and-test)
-  * [Build All Tasks (this can take a while):](#build-all-tasks-this-can-take-a-while)
-  * [Build a specific task (recommended):](#build-a-specific-task-recommended)
-  * [Run Tests](#run-tests)
-  * [Legacy Tests](#legacy-tests)
+  - [Build All Tasks (this can take a while):](#build-all-tasks-this-can-take-a-while)
+  - [Build a specific task (recommended):](#build-a-specific-task-recommended)
+  - [Minifying a task (bundling)](#minifying-a-task-bundling)
+  - [Run Tests](#run-tests)
+  - [Legacy Tests](#legacy-tests)
+  - [Remote debugging node tasks](#remote-debugging-node-tasks)
 
 # Contributing
 
@@ -52,6 +55,11 @@ v4.2.0
 5.6.0
 ```
 
+**Note:** to recent Node versions will not work with all of the tooling in this
+repository. Before we improve it to support latest versions, consider using
+Node 10. You can use [Volta](https://volta.sh) to manage multiple Node versions
+on your system.
+
 To install npm separately:
 
 ```
@@ -77,6 +85,9 @@ the `_build` directory.  You can then use the tfx client to upload this to your 
 
 The build will also generate a `tasks.loc.json` and an english strings file under `Strings` in your source tree. You should check these back in. Another localization process will create the other strings files.
 
+Note: if you see some issues with externals downloading - you may probably need to downgrade NodeJS version to 8 to build task.
+You can use [nvm](https://github.com/nvm-sh/nvm) to install and use several NodeJS versions on your environment.
+
 ## Build All Tasks (this can take a while):
 
 ``` bash
@@ -89,6 +100,23 @@ npm run build
 ```bash
 node make.js build --task ShellScript
 ```
+
+## Build task with the bypassed auditing step
+
+```bash
+node make.js build --task ShellScript --BypassNpmAudit
+```
+
+## Minifying a task (bundling)
+
+Node-based tasks can optionally be **bundled and minified** at build time — each Node execution
+target is bundled with [esbuild](https://esbuild.github.io/) into a single minified file and the
+per-task `node_modules` tree is dropped from the output, cutting deployable size by ~90% or more.
+Minification is **off by default** and **opt-in per task** via `make.json`.
+
+See **[Minifying a task (bundling)](minify-tasks.md)** for the full guide: trying it on the command
+line, opting in via `make.json`, the `minify` options, source maps and debugging, duplicate-package
+handling, and the caveats to validate before opting a task in.
 
 ## Run Tests
 
@@ -123,3 +151,26 @@ For a specific task
 ```bash
 node make.js testLegacy --task Xcode
 ```
+
+## Remote debugging node tasks
+
+The newer versions of Azure DevOps Pipeline Agent (3.242.0+) support remote debugging node-based pipeline tasks.
+If you wish to debug through the task code being executed on the actual agent machine you need to:
+1. [Configure the agent](https://github.com/microsoft/azure-pipelines-agent/blob/master/docs/contribute.md)
+2. Build and upload the version of the task that supports remote debugging
+
+To build the task in debug mode run:
+```bash
+node make.js build --task AzureCLIV2 --debug-agent-dir "<path to the local agent run directory>"
+```
+
+This command will also create the necessary launch configurations for Visual Studio Code.
+Once you run the pipeline and the agent pauses the execution awaiting for the debugger to attach, run the configuration which corresponds to the version of the task (pay attention to the version of the patch).
+
+
+You can also build all tasks at once in this mode:
+```bash
+node make.js build --debug-agent-dir "<path to the local agent root directory>"
+```
+
+Note that the agent must be run with the `--debug` parameter and that the `VSTSAGENT_DEBUG_TASK` environment variable must be defined on the VM.

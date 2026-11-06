@@ -1,9 +1,9 @@
-import msRestAzure = require('azure-pipelines-tasks-azure-arm-rest-v2/azure-arm-common');
+import msRestAzure = require('azure-pipelines-tasks-azure-arm-rest/azure-arm-common');
 import tl = require("azure-pipelines-task-lib/task");
 import util = require("util");
 
-import { AzureEndpoint } from 'azure-pipelines-tasks-azure-arm-rest-v2/azureModels';
-import { AzureRMEndpoint } from 'azure-pipelines-tasks-azure-arm-rest-v2/azure-arm-endpoint';
+import { AzureEndpoint } from 'azure-pipelines-tasks-azure-arm-rest/azureModels';
+import { AzureRMEndpoint } from 'azure-pipelines-tasks-azure-arm-rest/azure-arm-endpoint';
 
 export class KeyVaultTaskParameters {
 
@@ -23,6 +23,9 @@ export class KeyVaultTaskParameters {
         var connectedService = tl.getInput("ConnectedServiceName", true);
         this.subscriptionId = tl.getEndpointDataParameter(connectedService, "SubscriptionId", true);
         this.keyVaultName = tl.getInput("KeyVaultName", true);
+        if (this.keyVaultName != encodeURIComponent(this.keyVaultName)){
+            throw new Error(tl.loc("InvalidKeyVaultName", this.keyVaultName));
+        }
         this.secretsFilter = tl.getDelimitedInput("SecretsFilter", ",", true);
         var azureKeyVaultDnsSuffix = tl.getEndpointDataParameter(connectedService, "AzureKeyVaultDnsSuffix", true);
         if (!azureKeyVaultDnsSuffix) {

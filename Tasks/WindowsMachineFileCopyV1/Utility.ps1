@@ -1,4 +1,4 @@
-function ThrowError
+﻿function ThrowError
 {
     param([string]$errorMessage)
   
@@ -89,6 +89,7 @@ function Validate-DestinationPath(
         ThrowError -errorMessage (Get-LocalizedString -Key "Remote destination path '{0}' cannot contain environment variables." -ArgumentList $value)
     }
 }
+
 # $sourcePath, $targetPath, $credential, $cleanTargetBeforeCopy, $additionalArguments
 # $adminUserName, $adminPassword
 function Copy-OnLocalMachine(
@@ -97,9 +98,12 @@ function Copy-OnLocalMachine(
     [string] $adminUserName,
     [string] $adminPassword,
     [string] $cleanTargetBeforeCopy,
-    [string] $additionalArguments
+    [object] $additionalArguments,
+    [bool] $useSanitizerActivate = $false,
+    [bool] $enableWindowsMachineFileCopyArgumentsHardening = $false,
+    [string] $scriptRoot = ""
     )
 {
     $credential = New-Object 'System.Net.NetworkCredential' -ArgumentList $adminUserName, $adminPassword
-    Invoke-Command -ScriptBlock $CopyJob -ArgumentList "", $sourcePath, $targetPath, $credential, $cleanTargetBeforeCopy, $additionalArguments
+    Invoke-Command -ScriptBlock $CopyJob -ArgumentList "", $sourcePath, $targetPath, $credential, $cleanTargetBeforeCopy, $additionalArguments, $useSanitizerActivate, $enableWindowsMachineFileCopyArgumentsHardening, $scriptRoot
 }

@@ -1,0 +1,20 @@
+{
+  "private": "true",
+  "main": "index.js",
+  "scripts": {
+    "build": "node ../../make.js build --task NodeTaskRunnerInstallerV0",
+    "serverBuild": "node ../../make.js serverBuild --task NodeTaskRunnerInstallerV0",
+    "test": "node ../../make.js test --task NodeTaskRunnerInstallerV0"
+  },
+  "author": "Microsoft Corporation",
+  "license": "MIT",
+  "dependencies": {
+    "@types/node": "^24.10.0",
+    "@types/mocha": "^10.0.10",
+    "azure-pipelines-task-lib": "^5.280.3",
+    "azure-pipelines-tool-lib": "^2.281.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

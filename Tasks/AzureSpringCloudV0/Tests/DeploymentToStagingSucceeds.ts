@@ -19,7 +19,7 @@ export class DeploymentToStagingSucceeds {
         tr.setInput('AppName', 'testapp');
         tr.setInput('UseStagingDeployment', "true");
         tr.setInput('Package', 'dummy.jar');
-        tr.setInput('RuntimeVersion', 'Java_11');
+        tr.setInput('RuntimeVersion', 'Java_17');
         tr.setInput('EnvironmentVariables', '-key1 val1 -key2 "val     2"');
         tr.setInput('DotNetCoreMainEntryPath', '/foobar.dll');
         tr.setInput('CreateNewDeployment', "false");
@@ -31,15 +31,13 @@ export class DeploymentToStagingSucceeds {
         DeploymentToStagingSucceeds.mockTaskInputParameters();
         let testPath = path.join(__dirname, 'DeploymentToStagingSucceedsL0.js');
         let mockTestRunner: ttm.MockTestRunner = new ttm.MockTestRunner(testPath);
-        try {
-            mockTestRunner.run();
+        mockTestRunner.runAsync().then(() => {
             assert.deepEqual(mockTestRunner.errorIssues, [], 'No error output expected in a successful deployment');
             assert(mockTestRunner.succeeded);
             done();
-        }
-        catch (error) {
+        }).catch((error) => {
             console.error(error);
             done(error);
-        }
+        });
     };
 }

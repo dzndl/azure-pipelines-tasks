@@ -1,6 +1,6 @@
 {
   "loc.friendlyName": "Conda 環境",
-  "loc.helpMarkDown": "[Learn more about this task](https://aka.ms/pipelines-anaconda-guide)<br>[Task documentation](https://go.microsoft.com/fwlink/?linkid=873466)",
+  "loc.helpMarkDown": "[深入了解此工作](https://aka.ms/pipelines-anaconda-guide)<br>[工作文件](https://go.microsoft.com/fwlink/?linkid=873466)",
   "loc.description": "這項工作已淘汰。請直接在指令碼中使用 `conda` 來使用 Anaconda 環境。",
   "loc.instanceNameFormat": "Conda 環境 $(environmentName)",
   "loc.input.label.createCustomEnvironment": "建立自訂環境",
@@ -24,5 +24,6 @@
   "loc.messages.ReactivateExistingEnvironment": "找到現有的環境 %s，而且工作未設定 [清理環境] 參數。正在重新啟動...",
   "loc.messages.ParameterRequired": "'%s' 參數為必要",
   "loc.messages.PlatformNotRecognized": "無法辨識平台",
-  "loc.messages.PrependPath": "在 PATH 環境變數前面加上目錄: %s"
+  "loc.messages.PrependPath": "在 PATH 環境變數前面加上目錄: %s",
+  "loc.messages.DeprecatedTask": "自 2019 年 2 月 13 日起，CondaEnvironment@1 (Conda 環境) 工作已被取代，且即將淘汰。直接從 bash/pwsh/script 工作使用 Conda CLI ('conda')。請瀏覽 https://aka.ms/azdo-deprecated-tasks 以深入了解已被取代的任務。"
 }

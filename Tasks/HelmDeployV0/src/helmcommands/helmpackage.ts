@@ -4,10 +4,10 @@ import tl = require('azure-pipelines-task-lib/task');
 import helmcli from "./../helmcli";
 import * as helmutil from "./../utils";
 
-export function addArguments(helmCli: helmcli): void {
+export async function addArguments(helmCli: helmcli): Promise<void> {
 
     var chart = tl.getInput("chartPath", true);
-    var version = tl.getInput("version", false);
+    var version = helmutil.trimIdentifierInput(tl.getInput("version", false));
     var updatedependency = tl.getBoolInput('updatedependency', false);
     var destination = tl.getInput("destination", false);
     var save = tl.getBoolInput('save', false);
@@ -17,19 +17,21 @@ export function addArguments(helmCli: helmcli): void {
         helmCli.addArgument("--dependency-update");
     }
 
-    if (save && !helmCli.isHelmV3()) {
+    if (save && !helmCli.isHelmV3orHigher()) {
         helmCli.addArgument("--save ");
     }
 
     if (version) {
-        helmCli.addArgument("--version ".concat(version));
+        helmCli.addSingleArgument("--version");
+        helmCli.addSingleArgument(version);
     }
 
     if (destination) {
         if (!tl.exist(destination)) {
             tl.mkdirP(destination);
         }
-        helmCli.addArgument("--destination \"" + destination + "\"");
+        helmCli.addSingleArgument("--destination");
+        helmCli.addSingleArgument(destination);
     }
 
     if (argumentsInput) {
@@ -37,6 +39,6 @@ export function addArguments(helmCli: helmcli): void {
     }
 
 
-    helmCli.addArgument("\"" + helmutil.resolvePath(chart) + "\"");
+    helmCli.addSingleArgument(helmutil.resolvePath(chart));
 
 }

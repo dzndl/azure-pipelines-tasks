@@ -4,7 +4,7 @@ import * as os from "os";
 import * as path from "path";
 import * as util from "util";
 import * as tl from "azure-pipelines-task-lib";
-import * as telemetry from "utility-common/telemetry";
+import * as telemetry from "azure-pipelines-tasks-utility-common/telemetry";
 import * as auth from "./authentication";
 import * as utils from "./utilities";
 
@@ -25,6 +25,7 @@ export class Repository
 
 async function main(): Promise<void> {
     tl.setResourcePath(path.join(__dirname, "task.json"));
+    tl.warning(tl.loc("TaskDeprecationNotice"));
     try {
         // Local feeds
         const internalFeeds = await auth.getInternalAuthInfoArray("feedList");

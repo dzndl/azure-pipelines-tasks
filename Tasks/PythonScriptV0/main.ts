@@ -3,6 +3,7 @@ import * as task from 'azure-pipelines-task-lib/task';
 import { pythonScript } from './pythonscript';
 
 (async () => {
+    let error: any | undefined;
     try {
         task.setResourcePath(path.join(__dirname, 'task.json'));
         await pythonScript({
@@ -15,7 +16,8 @@ import { pythonScript } from './pythonscript';
             failOnStderr: task.getBoolInput('failOnStderr')
         });
         task.setResult(task.TaskResult.Succeeded, "");
-    } catch (error) {
+    } catch (e) {
+        error = e;
         task.setResult(task.TaskResult.Failed, error.message);
     }
 })();

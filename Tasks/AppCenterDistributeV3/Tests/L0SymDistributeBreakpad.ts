@@ -1,13 +1,13 @@
 
-import ma = require('vsts-task-lib/mock-answer');
-import tmrm = require('vsts-task-lib/mock-run');
+import ma = require('azure-pipelines-task-lib/mock-answer');
+import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 import fs = require('fs');
 import azureBlobUploadHelper = require('../azure-blob-upload-helper');
-import { basicSetup } from './UnitTests/TestHelpers';
+import { basicSetup, mockFs } from './UnitTests/TestHelpers';
 
 const Stats = require('fs').Stats;
-const mockery = require('mockery');
+const libMocker = require('azure-pipelines-task-lib/lib-mocker');
 const nock = require('nock');
 
 const taskPath = path.join(__dirname, '..', 'appcenterdistribute.js');
@@ -34,6 +34,11 @@ nock('https://example.test')
         expiration_date: 1234567
     });
 
+nock('https://example.test')
+    .post('/v0.1/apps/testuser/testapp/releases/1/groups', {
+        id: "00000000-0000-0000-0000-000000000000",
+        mandatory_update: false
+    }).reply(200);
 // provide answers for task mock
 const a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
     'checkPath': {
@@ -59,7 +64,10 @@ const a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
 };
 tmr.setAnswers(a);
 
-fs.readdirSync = (folder: string) => {
+const mockedFs = {...fs, ...mockFs()};
+
+mockedFs.createReadStream = fs.createReadStream;
+mockedFs.readdirSync = (folder: string | Buffer): any[] => {
     let files: string[] = [];
     if (folder === '/test/path/to') {
         files = [
@@ -77,14 +85,14 @@ fs.readdirSync = (folder: string) => {
     return files;
 };
 
-fs.statSync = (s: string) => {
+mockedFs.statSync = (s: string) => {
     const stat = new Stats;
     stat.isFile = () => s.endsWith('.txt');
     stat.isDirectory = () => !s.endsWith('.txt');
     stat.size = 100;
     return stat;
 }
-fs.lstatSync = fs.statSync;
+mockedFs.lstatSync = mockedFs.statSync;
 
 azureBlobUploadHelper.AzureBlobUploadHelper.prototype.upload = async (uploadUrl, file) => {
     if(file.toLowerCase().endsWith('.zip')) {
@@ -95,27 +103,17 @@ azureBlobUploadHelper.AzureBlobUploadHelper.prototype.upload = async (uploadUrl,
 
 let fsos = fs.openSync;
 
-fs.openSync = (path: string, flags: string) => {
+mockedFs.openSync = (path: string, flags: string) => {
     if (path.includes("/test/path/to") || path.endsWith("libSasquatchBreakpad.so") || path.endsWith(".apk")){
         return 1234567.89;
     }
     return fsos(path, flags);
 }
 
-let fsrs = fs.readSync;
-
-fs.readSync = (fd: number, buffer: Buffer, offset: number, length: number, position: number)=> {
-    if (fd == 1234567.89) {
-        buffer = new Buffer(100);
-        return;
-    }
-    return fsrs(fd, buffer, offset, length, position);
-}
-
 tmr.registerMock('azure-blob-upload-helper', azureBlobUploadHelper);
-tmr.registerMock('fs', fs);
+tmr.registerMock('fs', mockedFs);
 
 tmr.run();
 
-mockery.deregisterMock('fs', fs);
-mockery.deregisterMock('azure-blob-upload-helper', azureBlobUploadHelper);
+libMocker.deregisterMock('fs');
+libMocker.deregisterMock('azure-blob-upload-helper');

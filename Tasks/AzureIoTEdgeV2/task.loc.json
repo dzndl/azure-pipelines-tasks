@@ -13,8 +13,8 @@
   "author": "Microsoft Corporation",
   "version": {
     "Major": 2,
-    "Minor": 4,
-    "Patch": 11
+    "Minor": 282,
+    "Patch": 1
   },
   "preview": false,
   "showEnvironmentVariables": true,
@@ -181,7 +181,8 @@
       "options": {
         "amd64": "amd64",
         "windows-amd64": "windows-amd64",
-        "arm32v7": "arm32v7"
+        "arm32v7": "arm32v7",
+        "arm64v8": "arm64v8"
       },
       "properties": {
         "EditableOptions": "True"
@@ -237,7 +238,7 @@
       "target": "azureContainerRegistry",
       "endpointId": "$(azureSubscriptionEndpoint)",
       "dataSourceName": "AzureRMContainerRegistries",
-      "resultTemplate": "{\"Value\":\"{\\\"loginServer\\\":\\\"{{{properties.loginServer}}}\\\", \\\"id\\\" : \\\"{{{id}}}\\\"}\",\"DisplayValue\":\"{{{name}}}\"}"
+      "resultTemplate": "{\"Value\":\"{\\\"loginServer\\\":\\\"{{{properties.loginServer}}}\\\"}\", \"DisplayValue\":\"{{{name}}}\"}"
     },
     {
       "target": "iothubname",
@@ -249,6 +250,18 @@
   "execution": {
     "Node10": {
       "target": "index.js"
+    },
+    "Node16": {
+      "target": "index.js",
+      "argumentFormat": ""
+    },
+    "Node20_1": {
+      "target": "index.js",
+      "argumentFormat": ""
+    },
+    "Node24": {
+      "target": "index.js",
+      "argumentFormat": ""
     }
   },
   "messages": {
@@ -282,6 +295,19 @@
     "FinishGenerateDeploymentManifest": "ms-resource:loc.messages.FinishGenerateDeploymentManifest",
     "LoginRegistrySucess": "ms-resource:loc.messages.LoginRegistrySucess",
     "SkipSettingEnvironmentVariableForSecret": "ms-resource:loc.messages.SkipSettingEnvironmentVariableForSecret"
+  },
+  "restrictions": {
+    "commands": {
+      "mode": "restricted"
+    },
+    "settableVariables": {
+      "allowed": [
+        "DOCKER_CLI_EXPERIMENTAL",
+        "DEPLOYMENT_FILE_PATH",
+        "_DEPLOYMENT_FILE_PATH",
+        "VSTS_EXTENSION_EDGE_DOCKER_CREDENTIAL"
+      ]
+    }
   },
   "OutputVariables": [
     {

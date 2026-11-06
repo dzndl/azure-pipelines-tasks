@@ -2,6 +2,7 @@
   "variables": {
     "client_id": "",
     "client_secret": "",
+    "client_jwt": "",
     "subscription_id": "",
     "tenant_id": "",
     "object_id": "",
@@ -17,12 +18,14 @@
     "package_name": "",
     "capture_name_prefix": "",
     "skip_clean": "",
-    "managed_image_name": ""
+    "managed_image_name": "",
+    "delete_temp_folder": ""
   },
   "builders": [{
         "type": "azure-arm",
         "client_id": "{{user `client_id`}}",
         "client_secret": "{{user `client_secret`}}",
+        "client_jwt": "{{user `client_jwt`}}",
         "managed_image_resource_group_name": "{{user `resource_group`}}",
         "managed_image_name": "{{user `managed_image_name`}}",
         "subscription_id": "{{user `subscription_id`}}",
@@ -58,7 +61,17 @@
             "chmod +x /deployTemp/{{user `package_name`}}/{{user `script_relative_path`}}",
             "/deployTemp/{{user `package_name`}}/{{user `script_relative_path`}} {{user `script_arguments`}}"
         ]
-    },
+    },{
+        "type": "shell",
+        "execute_command": "chmod +x {{ .Path }}; {{ .Vars }} sudo -E sh '{{ .Path }}'",
+        "inline": [
+          "echo delete_temp_folder: {{user `delete_temp_folder`}}",
+          "if [ \"{{user `delete_temp_folder`}}\" = \"true\" ]; then",
+          "  echo 'Removing /deployTemp if exists...'",
+          "  rm -rf /deployTemp && echo '/deployTemp deleted'",
+          "fi"
+        ]
+      },
     {
         "type": "shell",
         "execute_command": "chmod +x {{ .Path }}; {{ .Vars }} sudo -E sh '{{ .Path }}'",

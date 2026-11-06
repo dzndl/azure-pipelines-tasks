@@ -6,7 +6,6 @@ import fs = require('fs');
 import path = require('path');
 import shell = require('shelljs');
 import Q = require('q');
-import request = require('request');
 
 import * as handlers from "artifact-engine/Providers/typed-rest-client/Handlers"
 import * as providers from "artifact-engine/Providers"
@@ -15,8 +14,8 @@ import * as engine from "artifact-engine/Engine"
 import { AzureStorageArtifactDownloader } from "./AzureStorageArtifacts/AzureStorageArtifactDownloader";
 import { ArtifactDetailsDownloader } from "./ArtifactDetails/ArtifactDetailsDownloader";
 import { JenkinsRestClient, JenkinsJobDetails } from "./ArtifactDetails/JenkinsRestClient"
-
-var DecompressZip = require('decompress-zip');
+import { JenkinsOutput } from './JenkinsOutput';
+import * as extract from 'extract-zip'
 var fsExtra = require('fs-extra');
 var taskJson = require('./task.json');
 var uuidv4 = require('uuid/v4');
@@ -24,7 +23,7 @@ var uuidv4 = require('uuid/v4');
 const area: string = 'JenkinsDownloadArtifacts';
 
 async function getArtifactsFromUrl(artifactQueryUrl: string, strictSSL: boolean, localPathRoot: string, itemPattern: string, handler: handlers.BasicCredentialHandler, variables: { [key: string]: any }) {
-    console.log(tl.loc('ArtifactDownloadUrl', artifactQueryUrl));
+    JenkinsOutput.log(tl.loc('ArtifactDownloadUrl', artifactQueryUrl));
 
     var templatePath = path.join(__dirname, 'jenkins.handlebars.txt');
     var webProvider = new providers.WebProvider(artifactQueryUrl, templatePath, variables, handler, { ignoreSslError: !strictSSL });
@@ -36,7 +35,7 @@ async function getArtifactsFromUrl(artifactQueryUrl: string, strictSSL: boolean,
 }
 
 async function getZipFromUrl(artifactArchiveUrl: string, strictSSL: boolean, localPathRoot: string, handler: handlers.BasicCredentialHandler) {
-    console.log(tl.loc('ArtifactDownloadUrl', artifactArchiveUrl));
+    JenkinsOutput.log(tl.loc('ArtifactDownloadUrl', artifactArchiveUrl));
 
     var downloaderOptions = configureDownloaderOptions();
     var downloader = new engine.ArtifactEngine();
@@ -52,6 +51,8 @@ function configureDownloaderOptions(): engine.ArtifactEngineOptions {
     downloaderOptions.parallelProcessingLimit = +tl.getVariable("release.artifact.download.parallellimit") || 4;
     var debugMode = tl.getVariable('System.Debug');
     downloaderOptions.verbose = debugMode ? debugMode.toLowerCase() != 'false' : false;
+    // Requires EnableArtifactEngineExternalOutput in the artifact engine.
+    downloaderOptions.vsoCommandMode = JenkinsOutput.options.vsoCommandMode;
 
     return downloaderOptions;
 }
@@ -97,17 +98,11 @@ function publishEvent(feature, properties: any): void {
 export async function unzip(zipLocation: string, unzipLocation: string): Promise<void> {
     await new Promise<void>(function (resolve, reject) {
         tl.debug('Extracting ' + zipLocation + ' to ' + unzipLocation);
-
-        var unzipper = new DecompressZip(zipLocation);
-        unzipper.on('error', err => {
-            return reject(tl.loc("ExtractionFailed", err))
-        });
-        unzipper.on('extract', log => {
-            tl.debug('Extracted ' + zipLocation + ' to ' + unzipLocation + ' successfully');
-            return resolve();
-        });
-        unzipper.extract({
-            path: unzipLocation
+        tl.debug(`Using extract-zip package for extracting archive`);
+        extract(zipLocation, { dir: unzipLocation }).then(() => {
+            resolve();
+        }).catch((error) => {
+            reject(error);
         });
     });
 }
@@ -115,6 +110,7 @@ export async function unzip(zipLocation: string, unzipLocation: string): Promise
 async function doWork() {
     try {
         tl.setResourcePath(path.join(__dirname, 'task.json'));
+        JenkinsOutput.initialize();
 
         const serverEndpoint: string = tl.getInput('serverEndpoint', true);
         const serverEndpointUrl: string = tl.getEndpointUrl(serverEndpoint, false);
@@ -145,7 +141,7 @@ async function doWork() {
         }
         else {
             jenkinsJobDetails = await jenkinsClient.GetJobDetails();
-            console.log(tl.loc("FoundJenkinsJobDetails", jenkinsJobDetails.jobName, jenkinsJobDetails.jobType, jenkinsJobDetails.buildId, jenkinsJobDetails.multiBranchPipelineName));
+            JenkinsOutput.log(tl.loc("FoundJenkinsJobDetails", jenkinsJobDetails.jobName, jenkinsJobDetails.jobType, jenkinsJobDetails.buildId, jenkinsJobDetails.multiBranchPipelineName));
 
             const artifactQueryUrl: string = `${serverEndpointUrl}/${jenkinsJobDetails.jobUrlInfix}/${jenkinsJobDetails.multiBranchPipelineUrlInfix}/${jenkinsJobDetails.buildId}/api/json?tree=artifacts[*]`;
             var variables = {
@@ -211,7 +207,7 @@ async function doWork() {
             if (tl.getBoolInput('propagatedArtifacts') == true) {
                 try {
                     jenkinsJobDetails = await jenkinsClient.GetJobDetails();
-                    console.log(tl.loc("FoundJenkinsJobDetails", jenkinsJobDetails.jobName, jenkinsJobDetails.jobType, jenkinsJobDetails.buildId, jenkinsJobDetails.multiBranchPipelineName));
+                    JenkinsOutput.log(tl.loc("FoundJenkinsJobDetails", jenkinsJobDetails.jobName, jenkinsJobDetails.jobType, jenkinsJobDetails.buildId, jenkinsJobDetails.multiBranchPipelineName));
                 }
                 catch (error) {
                     tl.warning(tl.loc("CommitsAndWorkItemsDownloadFailed", error));

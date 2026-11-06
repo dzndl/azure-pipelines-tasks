@@ -1,6 +1,8 @@
 Trace-VstsEnteringInvocation $MyInvocation
 Import-VstsLocStrings "$PSScriptRoot\Task.json"
 
+Import-Module $PSScriptRoot\ps_modules\Sanitizer
+
 # Get inputs.
 $scriptType = Get-VstsInput -Name ScriptType -Require
 $scriptPath = Get-VstsInput -Name ScriptPath
@@ -21,6 +23,17 @@ if ($scriptArguments -match '[\r\n]') {
     throw (Get-VstsLocString -Key InvalidScriptArguments0 -ArgumentList $scriptArguments)
 }
 
+# Sanitize script arguments to prevent PowerShell command injection.
+# No-op unless BOTH the org-level "Enable shell tasks arguments validation"
+# toggle and the per-task pipeline feature flag are enabled.
+# See https://aka.ms/ado/75787 and Tasks/Common/Sanitizer/Invoke-ScriptArgumentSanitization.ps1.
+if ($scriptType -ne "InlineScript") {
+    Invoke-ScriptArgumentSanitization `
+        -InputArgs $scriptArguments `
+        -TaskName 'AzurePowerShellV2' `
+        -PipelineFeatureFlagName 'EnableAzurePowerShellArgumentsSanitization'
+}
+
 # string constants
 $otherVersion = "OtherVersion"
 $latestVersion = "LatestVersion"
@@ -29,7 +42,7 @@ if ($targetAzurePs -eq $otherVersion) {
     if ($customTargetAzurePs -eq $null) {
         throw (Get-VstsLocString -Key InvalidAzurePsVersion $customTargetAzurePs)
     } else {
-        $targetAzurePs = $customTargetAzurePs.Trim()        
+        $targetAzurePs = $customTargetAzurePs.Trim()
     }
 }
 
@@ -77,7 +90,15 @@ Update-PSModulePathForHostedAgent -targetAzurePs $targetAzurePs -authScheme $aut
 try {
     # Initialize Azure.
     Import-Module $PSScriptRoot\ps_modules\VstsAzureHelpers_
-    Initialize-Azure -azurePsVersion $targetAzurePs
+    if (($authScheme -eq 'WorkloadIdentityFederation') -and (Get-Module Az.Accounts -ListAvailable)) {
+        $vstsEndpoint = Get-VstsEndpoint -Name SystemVssConnection -Require
+        $vstsAccessToken = $vstsEndpoint.auth.parameters.AccessToken
+        $encryptedToken = ConvertTo-SecureString $vstsAccessToken -AsPlainText -Force
+        Initialize-AzModule -Endpoint $endpoint -connectedServiceNameARM $serviceName -encryptedToken $encryptedToken
+    }
+    else {
+        Initialize-Azure -azurePsVersion $targetAzurePs
+    }
     # Trace the expression as it will be invoked.
     $__vstsAzPSInlineScriptPath = $null
     If ($scriptType -eq "InlineScript") {
@@ -143,5 +164,6 @@ finally {
     }
 
     Import-Module $PSScriptRoot\ps_modules\VstsAzureHelpers_
+    Remove-EndpointSecrets
     Disconnect-AzureAndClearContext -authScheme $authScheme -ErrorAction SilentlyContinue
 }

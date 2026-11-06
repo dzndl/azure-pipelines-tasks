@@ -7,9 +7,10 @@ import * as tr from "azure-pipelines-task-lib/toolrunner";
 import * as yaml from "js-yaml";
 import * as DockerComposeUtils from "./dockercomposeutils";
 
-import ContainerConnection from "azure-pipelines-tasks-docker-common-v2/containerconnection"
-import AuthenticationToken from "azure-pipelines-tasks-docker-common-v2/registryauthenticationprovider/registryauthenticationtoken"
+import ContainerConnection from "azure-pipelines-tasks-docker-common/containerconnection"
+import AuthenticationToken from "azure-pipelines-tasks-docker-common/registryauthenticationprovider/registryauthenticationtoken"
 import * as Utils from "./utils";
+import { createSanitizedExecOptions, sanitizeDockerOutput } from "azure-pipelines-tasks-docker-common/dockercommandutils";
 
 export default class DockerComposeConnection extends ContainerConnection {
     private dockerComposePath: string;
@@ -31,6 +32,7 @@ export default class DockerComposeConnection extends ContainerConnection {
         this.additionalDockerComposeFiles = tl.getDelimitedInput("additionalDockerComposeFiles", "\n");
         this.requireAdditionalDockerComposeFiles = tl.getBoolInput("requireAdditionalDockerComposeFiles");
         this.projectName = tl.getInput("projectName");
+        this.validateProjectNameDockerComposeV2();
     }
 
     public open(hostEndpoint?: string, authenticationToken?: AuthenticationToken): any {
@@ -75,7 +77,7 @@ export default class DockerComposeConnection extends ContainerConnection {
         });
     }
 
-    public async execCommandWithLogging(command: tr.ToolRunner, options?: tr.IExecOptions): Promise<string> {
+    public async execCommandWithLogging(command, options?: tr.IExecOptions): Promise<string> {
         // setup variable to store the command output
         let output = "";
         command.on("stdout", data => {
@@ -85,14 +87,23 @@ export default class DockerComposeConnection extends ContainerConnection {
         command.on("stderr", data => {
             output += data;
         });
-
-        await this.execCommand(command, options);
-
+        // Compose command output can contain attacker-controlled content (e.g. from a
+        // Dockerfile or docker-compose.yml in a pull request), so route it through the
+        // sanitizer by default to prevent ##vso[] logging-command injection. Options
+        // passed by the caller take precedence only for fields other than the sanitizer
+        // streams, so callers cannot accidentally disable sanitization.
+        await this.execCommand(command, { ...options, ...createSanitizedExecOptions() });
         return output || '\n';
     }
 
     public createComposeCommand(): tr.ToolRunner {
         var command = tl.tool(this.dockerComposePath);
+
+        if (!tl.getInput('dockerComposePath') && !this.dockerComposePath.includes("docker-compose")) {
+            command.arg("compose");
+            process.env["COMPOSE_COMPATIBILITY"] = "true";
+        }
+
         command.arg(["-f", this.dockerComposeFile]);
         var basePath = path.dirname(this.dockerComposeFile);
         this.additionalDockerComposeFiles.forEach(file => {
@@ -122,8 +133,14 @@ export default class DockerComposeConnection extends ContainerConnection {
             result += data;
         });
         command.on("errline", line => {
-            tl.error(line);
+            // errline is emitted from the raw child-process stderr regardless of the
+            // "silent" exec option, so it must be sanitized explicitly here - the
+            // sanitized outStream/errStream below are not consulted for this event.
+            tl.error(sanitizeDockerOutput(line));
         });
+        // The resolved compose config can echo attacker-controlled content from the
+        // compose file. stdout/stderr echoing to the console is suppressed (silent),
+        // and the errline handler above sanitizes what's forwarded to tl.error().
         return command.exec({ silent: true } as any).then(() => result);
     }
 
@@ -179,13 +196,44 @@ export default class DockerComposeConnection extends ContainerConnection {
         //Priority to docker-compose path provided by user
         this.dockerComposePath = tl.getInput('dockerComposePath');
         if (!this.dockerComposePath) {
-            //If not use the docker-compose avilable on agent
             this.dockerComposePath = tl.which("docker-compose");
+
+            if (!this.dockerComposePath) {
+                this.dockerComposePath = tl.which("docker");
+            }
+
             if (!this.dockerComposePath) {
                 throw new Error("Docker Compose was not found. You can provide the path to docker-compose via 'dockerComposePath' ");
             }
         } else {
             console.log("Using docker-compose from 'dockerComposePath' ");
         }
+    }
+
+    private validateProjectNameDockerComposeV2() {
+        tl.debug(`Start validating project name ${this.projectName}`);
+
+        if (this.dockerComposePath.includes("docker-compose")) {
+            tl.warning(tl.loc("MigrateToDockerComposeV2"));
+            return;
+        }
+
+        // The regular expression pattern is taken from compose-spec.json
+        // https://github.com/compose-spec/compose-spec/blob/864b24c24f7f24a26aa2c2b8a89a82478ce03a32/schema/compose-spec.json#L16
+        const regexpPattern = new RegExp("^[a-z0-9][a-z0-9_-]*$");
+
+        if (!regexpPattern.test(this.projectName)) {
+            tl.warning(tl.loc("InvalidProjectName", this.projectName));
+
+            console.log(`##vso[telemetry.publish area=TaskHub;feature=DockerComposeV0]${JSON.stringify({
+                "SYSTEM_JOBID": tl.getVariable("SYSTEM_JOBID"),
+                "SYSTEM_PLANID": tl.getVariable("SYSTEM_PLANID"),
+                "BUILD_BUILDID": tl.getVariable("BUILD_BUILDID"),
+                "IS_PROJECT_NAME_VALID": false,
+            })}`);
+            return;
+        }
+        
+        tl.debug("Project name is valid");
     }
 }

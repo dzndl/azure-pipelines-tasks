@@ -12,7 +12,7 @@
   "loc.input.label.definition": "Paquete",
   "loc.input.help.definition": "Si no encuentra el paquete en la lista, puede proporcionar el identificador de paquete, que encontrará mediante las instrucciones [aquí indicadas](https://go.microsoft.com/fwlink/?linkid=2086778).",
   "loc.input.label.version": "Versión",
-  "loc.input.help.version": "Versión del paquete",
+  "loc.input.help.version": "Versión del paquete. Use \"Más reciente\" para descargar la última versión del paquete en tiempo de ejecución.",
   "loc.input.label.files": "Archivos",
   "loc.input.help.files": "Especifique los archivos que se van a descargar con [patrones de coincidencia de archivos](https://go.microsoft.com/fwlink/?linkid=2086953).",
   "loc.input.label.extract": "Extraer contenido del paquete",
@@ -26,13 +26,17 @@
   "loc.messages.StartingDownloadOfPackage": "Iniciando la descarga del paquete %s en la ubicación %s",
   "loc.messages.ExtractingPackage": "Extrayendo el paquete %s en el directorio %s.",
   "loc.messages.PackageTypeNotSupported": "Con esta tarea solo se pueden descargar los tipos de paquetes NuGet, Python, universal, npm y Maven.",
+  "loc.messages.SkippingFileWithNoContent": "Omitiendo el archivo %s porque no se encontró contenido admitido",
   "loc.messages.ExtractionFailed": "No se pudo extraer el paquete con el error %s.",
   "loc.messages.RetryingOperation": "Error de la operación. Se espera %s ms antes de reintentar. Reintentos restantes: %s",
   "loc.messages.RedirectUrlError": "No se puede obtener la URL de redireccionamiento con el error %.",
   "loc.messages.UnsupportedArchiveType": "Tipo de archivo no compatible: %s",
+  "loc.messages.InvalidPackageFilePath": "La ruta de acceso del archivo de paquete '%s' debe ser relativa y permanecer dentro del directorio de destino.",
+  "loc.messages.InvalidPackageFileLink": "La ruta de acceso del archivo de paquete \"%s\" no puede contener un vínculo simbólico ni una unión debajo del directorio de destino.",
   "loc.messages.Error_UnexpectedErrorArtifactToolDownload": "Error inesperado al intentar descargar el paquete. Código de salida: (%s). Error: (%s)",
   "loc.messages.Info_ResolvedToolFromCache": "Se resolvió desde la memoria caché de herramientas: %s",
   "loc.messages.Info_DownloadingArtifactTool": "Descargando la herramienta de artefacto de %s",
-  "loc.messages.Info_Downloading": "Downloading package: %s, version: %s using feed id: %s, project: %s",
-  "loc.messages.Info_UsingArtifactToolDownload": "Usando la herramienta de artefacto para descargar el paquete"
+  "loc.messages.Info_Downloading": "Descargando el paquete: %s; versión: %s, con el identificador de fuente: %s; proyecto: %s",
+  "loc.messages.Info_UsingArtifactToolDownload": "Usando la herramienta de artefacto para descargar el paquete",
+  "loc.messages.Info_ResolvedLatestVersion": "Versión del paquete más reciente resuelta: %s"
 }

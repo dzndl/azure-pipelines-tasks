@@ -5,13 +5,22 @@ import fs = require('fs');
 
 export class Utility {
 
+    public static logRepositoryMessage(message: string): void {
+        tl.writeExternalOutput(message + "\n", {
+            source: 'repository',
+            vsoCommandMode: tl.getPipelineFeature('GitHubReleaseEnableVsoCommandBlocking')
+                ? 'blockAndTelemetry'
+                : 'telemetryOnly'
+        });
+    }
+
     public static getGithubEndPointToken(githubEndpoint: string): string {
         const githubEndpointObject = tl.getEndpointAuthorization(githubEndpoint, false);
         let githubEndpointToken: string = null;
 
         if (!!githubEndpointObject) {
             tl.debug("Endpoint scheme: " + githubEndpointObject.scheme);
-            
+
             if (githubEndpointObject.scheme === 'PersonalAccessToken') {
                 githubEndpointToken = githubEndpointObject.parameters.accessToken
             } else if (githubEndpointObject.scheme === 'OAuth'){
@@ -81,7 +90,7 @@ export class Utility {
         if (releaseNotesSource === ReleaseNotesSelectionMode.filePath) {
 
             if (fs.lstatSync(path.resolve(releaseNotesFile)).isDirectory()) {
-                console.log(tl.loc("ReleaseNotesFileIsDirectoryError", releaseNotesFile));
+                Utility.logRepositoryMessage(tl.loc("ReleaseNotesFileIsDirectoryError", releaseNotesFile));
             }
             else {
                 releaseNote = fs.readFileSync(releaseNotesFile).toString();
@@ -123,14 +132,14 @@ export class Utility {
      *  "next": "https://api.github.com/search/code?q=addClass+user%3Amozilla&page=2",
      *  "last": "https://api.github.com/search/code?q=addClass+user%3Amozilla&page=34"
      * }
-     * @param headerLink 
+     * @param headerLink
      */
     public static parseHTTPHeaderLink(headerLink: string): { [key: string]: string } {
         if (!headerLink) {
             // No paginated results found
-            return null; 
+            return null;
         }
-        
+
         // Split pages by comma as pages are separated by comma
         let pages = headerLink.split(Delimiters.comma);
         let links: { [key: string]: string } = {};
@@ -172,7 +181,7 @@ export class Utility {
 
     public static extractRepositoryOwnerAndName(repositoryName: string): IGitHubRepositoryInfo {
         let repositoryInfo = repositoryName.split(Delimiters.slash);
-        
+
         return {
             owner: repositoryInfo[0],
             name: repositoryInfo[1]
@@ -224,7 +233,7 @@ export class Utility {
     }
 
     public static validateStartCommitSpecification(compareWith: string) {
-        if (compareWith.toUpperCase() !== changeLogStartCommitSpecification.lastFullRelease.toUpperCase() 
+        if (compareWith.toUpperCase() !== changeLogStartCommitSpecification.lastFullRelease.toUpperCase()
             && compareWith.toUpperCase() !== changeLogStartCommitSpecification.lastNonDraftRelease.toUpperCase()
             && compareWith.toUpperCase() != changeLogStartCommitSpecification.lastNonDraftReleaseByTag.toUpperCase()) {
             throw new Error(tl.loc("InvalidCompareWithAttribute", compareWith));
@@ -232,7 +241,7 @@ export class Utility {
     }
 
     public static validateChangeLogType(changeLogType: string) {
-        if (changeLogType.toUpperCase() !== ChangeLogType.issueBased.toUpperCase() 
+        if (changeLogType.toUpperCase() !== ChangeLogType.issueBased.toUpperCase()
         && changeLogType.toUpperCase() !== ChangeLogType.commitBased.toUpperCase() ) {
         throw new Error(tl.loc("InvalidChangeLogTypeAttribute", changeLogType));
     }
@@ -252,7 +261,6 @@ export class Utility {
                 throw new Error(tl.loc("TagRequiredCreateAction"));
             }
         }
-        
     }
 
     public static isTagMatching(tag: string, tagPattern: string): boolean {
@@ -332,12 +340,12 @@ export class ActionType {
 
 export class AzureDevOpsVariables {
     public static readonly buildSourceVersion: string = "Build.SourceVersion";
-    public static readonly buildSourceBranch: string = "Build.SourceBranch"; 
-    public static readonly releaseWebUrl: string = "Release.ReleaseWebURL"; 
-    public static readonly collectionUri: string = "System.TeamFoundationCollectionUri"; 
-    public static readonly teamProject: string = "System.TeamProject"; 
-    public static readonly buildId: string = "Build.BuildId"; 
-    public static readonly releaseId: string = "Release.ReleaseId"; 
+    public static readonly buildSourceBranch: string = "Build.SourceBranch";
+    public static readonly releaseWebUrl: string = "Release.ReleaseWebURL";
+    public static readonly collectionUri: string = "System.TeamFoundationCollectionUri";
+    public static readonly teamProject: string = "System.TeamProject";
+    public static readonly buildId: string = "Build.BuildId";
+    public static readonly releaseId: string = "Release.ReleaseId";
 }
 
 export interface IGitHubRepositoryInfo {

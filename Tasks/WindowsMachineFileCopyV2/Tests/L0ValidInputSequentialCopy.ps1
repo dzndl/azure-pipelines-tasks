@@ -2,6 +2,7 @@
 param()
 
 . $PSScriptRoot\..\..\..\Tests\lib\Initialize-Test.ps1
+. $PSScriptRoot\..\..\Common\Sanitizer\ArgumentsSanitizer.ps1
 . $PSScriptRoot\MockVariable.ps1 -Force
 . $PSScriptRoot\MockHelper.ps1 -Force
 
@@ -13,6 +14,9 @@ Register-Mock Get-VstsInput { return $validSourcePackage } -ParametersEvaluator{
 Register-Mock Get-VstsInput { return $validApplicationPath } -ParametersEvaluator{ $Name -eq  "TargetPath" }
 Register-Mock Get-VstsInput { return $true } -ParametersEvaluator{ $Name -eq  "CleanTargetBeforeCopy" }
 Register-Mock Get-VstsInput { return $false } -ParametersEvaluator{ $Name -eq  "CopyFilesInParallel" }
+
+Register-Mock Get-SanitizerCallStatus { return $false }
+Register-Mock Get-SanitizerActivateStatus { return $false }
 
 & "$copyFilesToMachinesPath"
 

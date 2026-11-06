@@ -1,14 +1,24 @@
 {
+  "scripts": {
+    "build": "node ../../make.js build --task DuffleInstallerV0",
+    "serverBuild": "node ../../make.js serverBuild --task DuffleInstallerV0"
+  },
   "dependencies": {
     "@types/mocha": "^5.2.7",
-    "@types/node": "^10.17.0",
+    "@types/node": "^20.3.1",
     "@types/q": "^1.5.0",
     "@types/uuid": "^8.3.0",
-    "azure-pipelines-task-lib": "^3.0.6-preview.0",
-    "azure-pipelines-tool-lib": "0.11.0",
-    "utility-common-v2": "file:../../_build/Tasks/Common/utility-common-v2-2.0.0.tgz"
+    "azure-pipelines-task-lib": "^4.4.0",
+    "azure-pipelines-tasks-utility-common": "3.267.0",
+    "azure-pipelines-tool-lib": "^2.0.10"
   },
   "devDependencies": {
-    "typescript": "4.0.2"
+    "typescript": "5.1.6"
+  },
+  "overrides": {
+    "brace-expansion": "^1.1.18",
+    "js-yaml": "3.15.2",
+    "minimatch": "^3.1.5",
+    "underscore": "^1.13.8"
   }
 }

@@ -12,6 +12,17 @@ import httpInterfaces = require("typed-rest-client/Interfaces");
 import { VersionInfo, Channel, VersionFilesData, VersionParts } from "./models"
 import * as utils from "./versionutilities";
 
+const nodeVersion = parseInt(process.version.split('.')[0].replace('v', ''));
+if (nodeVersion > 16) {
+    require("dns").setDefaultResultOrder("ipv4first");
+    tl.debug("Set default DNS lookup order to ipv4 first");
+}
+
+if (nodeVersion > 19) {
+    require("net").setDefaultAutoSelectFamily(false);
+    tl.debug("Set default auto select family to false");
+}
+
 export class DotNetCoreVersionFetcher {
     private explicitVersioning: boolean = false;
     private channels: Channel[];
@@ -20,9 +31,14 @@ export class DotNetCoreVersionFetcher {
     constructor(explicitVersioning: boolean = false) {
         this.explicitVersioning = explicitVersioning;
         let proxyUrl: string = tl.getVariable("agent.proxyurl");
+        const timeout: number = this.getRequestTimeout();
         var requestOptions: httpInterfaces.IRequestOptions = {
             allowRetries: true,
-            maxRetries: 3
+            maxRetries: 3,
+            socketTimeout: timeout,
+            globalAgentOptions: {
+                timeout: timeout
+            }
         };
 
         if (proxyUrl) {
@@ -38,33 +54,35 @@ export class DotNetCoreVersionFetcher {
         this.channels = [];
     }
 
-    public async getVersionInfo(versionSpec: string, vsVersionSpec: string, packageType: string, includePreviewVersions: boolean): Promise<VersionInfo> {
+    public async getVersionInfo(versionSpec: string, vsVersionSpec: string, packageType: string, includePreviewVersions: boolean, matchingVersionSpec?: string): Promise<VersionInfo> {
         var requiredVersionInfo: VersionInfo = null;
         if (!this.channels || this.channels.length < 1) {
             await this.setReleasesIndex();
         }
 
+        let effectiveMatchingSpec = matchingVersionSpec || versionSpec;
+
         let channelInformation = this.getVersionChannel(versionSpec, includePreviewVersions);
         if (channelInformation) {
-            requiredVersionInfo = await this.getVersionFromChannel(channelInformation, versionSpec, vsVersionSpec, packageType, includePreviewVersions);
+            requiredVersionInfo = await this.getVersionFromChannel(channelInformation, effectiveMatchingSpec, vsVersionSpec, packageType, includePreviewVersions);
         }
 
         if (!!requiredVersionInfo) {
-            console.log(tl.loc("MatchingVersionForUserInputVersion", requiredVersionInfo.getVersion(), channelInformation.channelVersion, versionSpec))
+            console.log(tl.loc("MatchingVersionForUserInputVersion", requiredVersionInfo.getVersion(), channelInformation.channelVersion, effectiveMatchingSpec))
         }
         else {
-            console.log(tl.loc("MatchingVersionNotFound", packageType, versionSpec));
+            console.log(tl.loc("MatchingVersionNotFound", packageType, effectiveMatchingSpec));
             if (!versionSpec.endsWith("x")) {
                 console.log(tl.loc("FallingBackToAdjacentChannels", versionSpec));
-                requiredVersionInfo = await this.getVersionFromOtherChannels(versionSpec, vsVersionSpec, packageType, includePreviewVersions);
+                requiredVersionInfo = await this.getVersionFromOtherChannels(versionSpec, effectiveMatchingSpec, vsVersionSpec, packageType, includePreviewVersions);
             }
         }
 
         if (!requiredVersionInfo) {
-            throw tl.loc("VersionNotFound", packageType, versionSpec);
+            throw tl.loc("VersionNotFound", packageType, effectiveMatchingSpec);
         }
 
-        let dotNetSdkVersionTelemetry = `{"userVersion":"${versionSpec}", "resolvedVersion":"${requiredVersionInfo.getVersion()}"}`;
+        let dotNetSdkVersionTelemetry = `{"userVersion":"${effectiveMatchingSpec}", "resolvedVersion":"${requiredVersionInfo.getVersion()}"}`;
         console.log("##vso[telemetry.publish area=TaskDeploymentMethod;feature=UseDotNetV2]" + dotNetSdkVersionTelemetry);
         return requiredVersionInfo;
     }
@@ -76,7 +94,8 @@ export class DotNetCoreVersionFetcher {
         let downloadPackageInfoObject: VersionFilesData = null;
         this.machineOsSuffixes.find((osSuffix) => {
             downloadPackageInfoObject = versionInfo.getFiles().find((downloadPackageInfo: VersionFilesData) => {
-                if (downloadPackageInfo.rid && osSuffix && downloadPackageInfo.rid.toLowerCase() == osSuffix.toLowerCase()) {
+                if (downloadPackageInfo.rid && osSuffix && downloadPackageInfo.rid.toLowerCase() == osSuffix.toLowerCase() &&  (versionInfo.getPackageType() === "sdk" || (versionInfo.getPackageType() === "runtime" &&
+                 downloadPackageInfo.name.startsWith("dotnet-runtime")) )) {
 
                     if ((osSuffix.split("-")[0] == "win" && downloadPackageInfo.name.endsWith(".zip")) || (osSuffix.split("-")[0] != "win" && downloadPackageInfo.name.endsWith("tar.gz"))) {
                         return true;
@@ -113,14 +132,14 @@ export class DotNetCoreVersionFetcher {
                             this.channels.push(new Channel(channelRelease));
                         }
                         catch (ex) {
-                            tl.debug("Channel information in releases-index.json was not proper. Error: " + JSON.stringify(ex));
+                            tl.debug("Channel information in releases-index.json was not proper. Error: " + ex.message);
                             // do not fail, try to find version in the available channels.
                         }
                     }
                 });
             })
             .catch((ex) => {
-                throw tl.loc("ExceptionWhileDownloadOrReadReleasesIndex", JSON.stringify(ex));
+                throw tl.loc("ExceptionWhileDownloadOrReadReleasesIndex", ex.message);
             });
     }
 
@@ -200,7 +219,7 @@ export class DotNetCoreVersionFetcher {
                     return utils.getMatchingVersionFromList(versionInfoList, versionSpec, includePreviewVersions);
                 })
                 .catch((ex) => {
-                    tl.error(tl.loc("ErrorWhileGettingVersionFromChannel", versionSpec, channelInformation.channelVersion, JSON.stringify(ex)));
+                    tl.error(tl.loc("ErrorWhileGettingVersionFromChannel", versionSpec, channelInformation.channelVersion, ex.message));
                     return null;
                 });
         }
@@ -209,16 +228,16 @@ export class DotNetCoreVersionFetcher {
         }
     }
 
-    private async getVersionFromOtherChannels(version: string, vsVersionSpec: string, packageType: string, includePreviewVersions: boolean): Promise<VersionInfo> {
-        let fallbackChannels = this.getChannelsForMajorVersion(version);
+    private async getVersionFromOtherChannels(channelLookupVersion: string, matchingVersion: string, vsVersionSpec: string, packageType: string, includePreviewVersions: boolean): Promise<VersionInfo> {
+        let fallbackChannels = this.getChannelsForMajorVersion(channelLookupVersion);
         if (!fallbackChannels && fallbackChannels.length < 1) {
-            throw tl.loc("NoSuitableChannelWereFound", version);
+            throw tl.loc("NoSuitableChannelWereFound", channelLookupVersion);
         }
 
         var versionInfo: VersionInfo = null;
         for (var i = 0; i < fallbackChannels.length; i++) {
             console.log(tl.loc("LookingForVersionInChannel", (fallbackChannels[i]).channelVersion));
-            versionInfo = await this.getVersionFromChannel(fallbackChannels[i], version, vsVersionSpec, packageType, includePreviewVersions);
+            versionInfo = await this.getVersionFromChannel(fallbackChannels[i], matchingVersion, vsVersionSpec, packageType, includePreviewVersions);
 
             if (versionInfo) {
                 break;
@@ -258,7 +277,7 @@ export class DotNetCoreVersionFetcher {
                 }
                 else {
                     let scriptPath = path.join(this.getCurrentDir(),'externals', 'get-os-distro.sh');
-                    this.setFileAttribute(scriptPath, "777");
+                    this.setFileAttribute(scriptPath, "755");
 
                     scriptRunner = tl.tool(tl.which(scriptPath, true));
                 }
@@ -288,7 +307,7 @@ export class DotNetCoreVersionFetcher {
                 }
             }
             catch (ex) {
-                throw tl.loc("FailedInDetectingMachineArch", JSON.stringify(ex));
+                throw tl.loc("FailedInDetectingMachineArch", ex.message);
             }
 
             this.machineOsSuffixes = osSuffix;
@@ -302,6 +321,16 @@ export class DotNetCoreVersionFetcher {
     private getCurrentDir(): string {
         return __dirname;
     }
+
+    private getRequestTimeout(): number {
+        let timeout = 60_000 * 5;
+        const inputValue: string = tl.getInput('requestTimeout', false);
+        if (!(Number.isNaN(Number(inputValue)))) {
+            const maxTimeout = 60_000 * 10;
+            timeout = Math.min(parseInt(inputValue), maxTimeout);
+        }
+        return timeout;
+    }
 }
 
-const DotNetCoreReleasesIndexUrl: string = "https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/releases-index.json";
+const DotNetCoreReleasesIndexUrl: string = "https://builds.dotnet.microsoft.com/dotnet/release-metadata/releases-index.json";

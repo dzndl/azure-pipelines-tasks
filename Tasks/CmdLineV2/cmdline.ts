@@ -58,9 +58,10 @@ async function run() {
             });
         }
 
-        process.on("SIGINT", () => {
-            tl.debug('Started cancellation of executing script');
-            bash.killChildProcess();
+        ['SIGHUP', 'SIGINT', 'SIGQUIT', 'SIGTERM', 'EXIT'].forEach((signal) => {
+            process.on(signal, () => {
+                bash.killChildProcess(signal as NodeJS.Signals);
+            });
         });
 
         // Run bash.
@@ -78,7 +79,7 @@ async function run() {
         if (stderrFailure) {
             tl.error(tl.loc('JS_Stderr'));
             aggregatedStderr.forEach((err: string) => {
-                tl.error(err);
+                tl.error(err, tl.IssueSource.CustomerScript);
             });
             result = tl.TaskResult.Failed;
         }

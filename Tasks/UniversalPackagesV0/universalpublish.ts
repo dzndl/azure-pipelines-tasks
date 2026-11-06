@@ -1,13 +1,12 @@
-import * as pkgLocationUtils from "packaging-common/locationUtilities";
-import {ProvenanceHelper} from "packaging-common/provenance";
-import { getProjectAndFeedIdFromInputParam } from 'packaging-common/util';
-import * as telemetry from "utility-common/telemetry";
 import * as tl from "azure-pipelines-task-lib";
-import {IExecOptions, IExecSyncResult} from "azure-pipelines-task-lib/toolrunner";
-import * as artifactToolRunner from "packaging-common/universal/ArtifactToolRunner";
-import * as artifactToolUtilities from "packaging-common/universal/ArtifactToolUtilities";
-import * as auth from "packaging-common/universal/Authentication";
-import { logError } from 'packaging-common/util';
+import { IExecOptions, IExecSyncResult } from "azure-pipelines-task-lib/toolrunner";
+import * as pkgLocationUtils from "azure-pipelines-tasks-packaging-common/locationUtilities";
+import { ProvenanceHelper } from "azure-pipelines-tasks-packaging-common/provenance";
+import * as artifactToolRunner from "azure-pipelines-tasks-packaging-common/universal/ArtifactToolRunner";
+import * as artifactToolUtilities from "azure-pipelines-tasks-packaging-common/universal/ArtifactToolUtilities";
+import * as auth from "azure-pipelines-tasks-packaging-common/universal/Authentication";
+import { getProjectAndFeedIdFromInputParam, logError } from 'azure-pipelines-tasks-packaging-common/util';
+import * as telemetry from "azure-pipelines-tasks-utility-common/telemetry";
 
 const packageAlreadyExistsError = 17;
 const numRetries = 1;
@@ -18,8 +17,7 @@ export async function run(artifactToolPath: string): Promise<void> {
     try {
         // Get directory to publish
         const publishDir: string = tl.getInput("publishDirectory");
-        if (publishDir.length < 1)
-        {
+        if (publishDir.length < 1) {
             tl.debug(tl.loc("Info_PublishDirectoryNotFound"));
             return;
         }
@@ -53,8 +51,7 @@ export async function run(artifactToolPath: string): Promise<void> {
 
         [serviceUri, packageName, feedId, projectId, accessToken] = authSetup(feedType);
 
-        if (feedType === "internal")
-        {
+        if (feedType === "internal") {
             internalAuthInfo = new auth.InternalAuthInfo([], accessToken);
 
             toolRunnerOptions.env.UNIVERSAL_PUBLISH_PAT = internalAuthInfo.accessToken;
@@ -88,12 +85,14 @@ export async function run(artifactToolPath: string): Promise<void> {
             toolRunnerOptions.env.UNIVERSAL_PUBLISH_PAT = accessToken;
         }
 
-        if (versionRadio === "custom"){
+        if (versionRadio === "custom") {
             version = tl.getInput("versionPublish");
         }
-        else{
+        else if (["major", "minor", "patch"].includes(versionRadio.toLowerCase())) {
             feedUri = await pkgLocationUtils.getFeedUriFromBaseServiceUri(serviceUri, accessToken);
             version = await getNextPackageVersion(feedUri, accessToken, projectId, feedId, packageName);
+        } else {
+            throw new Error(tl.loc("Error_NoVersionOptionSpecifiedForPublish"));
         }
         tl.debug(tl.loc("Info_UsingArtifactToolPublish"));
 
@@ -146,7 +145,7 @@ export async function run(artifactToolPath: string): Promise<void> {
             tl.debug(tl.loc("Info_PublishingRetry", publishOptions.packageName, version, newVersion));
             execResult = publishPackageUsingArtifactTool(publishDir, publishOptions, toolRunnerOptions);
             version = newVersion;
-            retries++; 
+            retries++;
         }
 
         if (execResult != null && execResult.code === packageAlreadyExistsError) {
@@ -218,8 +217,9 @@ async function getNextPackageVersion(
     accessToken: string,
     projectId: string,
     feedId: string,
-    packageName: string)  {
+    packageName: string) {
     let version: string;
+    // Will get the highest package version available. Returns 0.0.0 as version if package name contains no versions.
     const highestVersion = await artifactToolUtilities.getHighestPackageVersionFromFeed(
         feedUri,
         accessToken,
@@ -227,11 +227,11 @@ async function getNextPackageVersion(
         feedId,
         packageName);
 
-    if(highestVersion != null) {
-        version= artifactToolUtilities.getVersionUtility(tl.getInput("versionPublishSelector"), highestVersion);
+    if (highestVersion != null) {
+        version = artifactToolUtilities.getVersionUtility(tl.getInput("versionPublishSelector"), highestVersion);
     }
 
-    if(version == null) {
+    if (version == null) {
         throw new Error(tl.loc("FailedToGetLatestPackageVersion"));
     }
 
@@ -240,7 +240,7 @@ async function getNextPackageVersion(
 
 function authSetup(
     feedType: string
-)   {
+) {
 
     let serviceUri: string;
     let packageName: string;
@@ -249,7 +249,7 @@ function authSetup(
     let accessToken: string;
 
     if (feedType == "internal") {
-        
+
         // getting inputs
         serviceUri = tl.getEndpointUrl("SYSTEMVSSCONNECTION", false);
 
@@ -259,12 +259,12 @@ function authSetup(
         projectId = feedProject.projectId;
 
         // Setting up auth info
-        accessToken = pkgLocationUtils.getSystemAccessToken();
+        accessToken = getAccessToken();
     }
 
     else {
         const externalAuthInfo = auth.GetExternalAuthInfo("externalEndpoints");
-        if (!externalAuthInfo)  {
+        if (!externalAuthInfo) {
             tl.setResult(tl.TaskResult.Failed, tl.loc("Error_NoSourceSpecifiedForPublish"));
             return;
         }
@@ -281,10 +281,49 @@ function authSetup(
         accessToken = (externalAuthInfo as auth.TokenExternalAuthInfo).token;
     }
     return [
-        serviceUri, 
+        serviceUri,
         packageName,
         feedId,
         projectId,
         accessToken
     ];
+}
+
+function getAccessToken() : string {
+    let accessToken: string;
+    let allowServiceConnection = tl.getVariable('PUBLISH_VIA_SERVICE_CONNECTION');
+
+    if(allowServiceConnection) {
+        let endpoint = tl.getInput('externalEndpoints', false);
+
+        if(endpoint) {
+            tl.debug("Found external endpoint, will try to use token for auth");
+            let endpointAuth = tl.getEndpointAuthorization(endpoint, true);
+            let endpointScheme = tl.getEndpointAuthorizationScheme(endpoint, true).toLowerCase();
+            switch(endpointScheme)
+            {
+                case ("token"):
+                    accessToken = endpointAuth.parameters["apitoken"];
+                    break;
+                default:
+                    tl.warning(tl.loc("Warning_UnsupportedServiceConnectionAuth"));
+                    break;
+            }
+        }
+        if(!accessToken)
+        {           
+            tl.debug("Checking for auth in environment variables."); 
+            accessToken = process.env["UNIVERSAL_PUBLISH_PAT"];
+        }
+        if(!accessToken)
+        {
+            tl.debug('Defaulting to use the System Access Token.');
+            accessToken = pkgLocationUtils.getSystemAccessToken();
+        }    
+    }
+    else {
+        accessToken = pkgLocationUtils.getSystemAccessToken();
+    }
+
+    return accessToken;
 }

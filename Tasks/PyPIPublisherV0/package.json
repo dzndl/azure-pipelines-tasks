@@ -4,13 +4,18 @@
   "description": "publish python package to the python package index",
   "main": "publisher.js",
   "scripts": {
+    "build": "node ../../make.js build --task PyPIPublisherV0",
+    "serverBuild": "node ../../make.js serverBuild --task PyPIPublisherV0",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Microsoft Corporation",
   "license": "MIT",
   "dependencies": {
-    "@types/node": "^6.0.101",
-    "@types/q": "^1.0.7",
-    "azure-pipelines-task-lib": "2.9.3"
+    "@types/mocha": "^5.2.7",
+    "@types/node": "^20.11.0",
+    "azure-pipelines-task-lib": "^5.281.1"
+  },
+  "devDependencies": {
+    "typescript": "5.1.6"
   }
 }

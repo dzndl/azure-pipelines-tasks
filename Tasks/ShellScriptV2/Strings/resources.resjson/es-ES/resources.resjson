@@ -1,7 +1,7 @@
 {
-  "loc.friendlyName": "Shell script",
-  "loc.helpMarkDown": "[Learn more about this task](https://go.microsoft.com/fwlink/?LinkID=613738)",
-  "loc.description": "Run a shell script using Bash",
+  "loc.friendlyName": "Script de shell",
+  "loc.helpMarkDown": "[Obtener más información acerca de esta tarea](https://go.microsoft.com/fwlink/?LinkID=613738)",
+  "loc.description": "Ejecutar un script de shell con Bash",
   "loc.instanceNameFormat": "Script de shell $(scriptPath)",
   "loc.group.displayName.advanced": "Avanzado",
   "loc.input.label.scriptPath": "Ruta de acceso del script",
@@ -15,5 +15,6 @@
   "loc.input.label.failOnStandardError": "Error si se produce un error estándar",
   "loc.input.help.failOnStandardError": "Si es true, esta tarea no se realizará cuando se registre algún error en la secuencia StandardError.",
   "loc.messages.BashReturnCode": "Bash se cerró con el código de retorno: %d",
-  "loc.messages.BashFailed": "Error de Bash: %s"
+  "loc.messages.BashFailed": "Error de Bash: %s",
+  "loc.messages.BashFailedWithCode137": "Bash se cerró con el código 137, lo que significa que se quedó sin memoria. Asegúrese de que el host del agente (contenedor) tenga suficiente memoria configurada."
 }

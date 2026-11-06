@@ -14,8 +14,8 @@
   "preview": false,
   "version": {
     "Major": 1,
-    "Minor": 188,
-    "Patch": 0
+    "Minor": 283,
+    "Patch": 1
   },
   "demands": [],
   "minimumAgentVersion": "2.0.0",
@@ -30,7 +30,7 @@
   "inputs": [
     {
       "name": "gitHubConnection",
-      "type": "connectedService:github:OAuth,OAuth2,PersonalAccessToken,Token",
+      "type": "connectedService:github:OAuth,OAuth2,PersonalAccessToken,InstallationToken,Token",
       "label": "ms-resource:loc.input.label.gitHubConnection",
       "defaultValue": "",
       "required": true,
@@ -188,6 +188,20 @@
       "helpMarkDown": "ms-resource:loc.input.help.isPreRelease"
     },
     {
+      "name": "makeLatest",
+      "type": "pickList",
+      "label": "ms-resource:loc.input.label.makeLatest",
+      "defaultValue": "true",
+      "required": false,
+      "visibleRule": "action = create || action = edit",
+      "helpMarkDown": "ms-resource:loc.input.help.makeLatest",
+      "options": {
+        "true": "true",
+        "false": "false",
+        "legacy": "legacy"
+      }
+    },
+    {
       "name": "addChangeLog",
       "type": "boolean",
       "label": "ms-resource:loc.input.label.addChangeLog",
@@ -255,8 +269,17 @@
   ],
   "instanceNameFormat": "ms-resource:loc.instanceNameFormat",
   "execution": {
-    "Node10": {
-      "target": "main.js"
+    "Node16": {
+      "target": "main.js",
+      "argumentFormat": ""
+    },
+    "Node20_1": {
+      "target": "main.js",
+      "argumentFormat": ""
+    },
+    "Node24": {
+      "target": "main.js",
+      "argumentFormat": ""
     }
   },
   "messages": {
@@ -264,6 +287,7 @@
     "GetTagsError": "ms-resource:loc.messages.GetTagsError",
     "GetReleasesError": "ms-resource:loc.messages.GetReleasesError",
     "CreateReleaseError": "ms-resource:loc.messages.CreateReleaseError",
+    "CreateReleaseFailed": "ms-resource:loc.messages.CreateReleaseFailed",
     "EditReleaseError": "ms-resource:loc.messages.EditReleaseError",
     "DeleteReleaseError": "ms-resource:loc.messages.DeleteReleaseError",
     "CreatingRelease": "ms-resource:loc.messages.CreatingRelease",
@@ -334,6 +358,7 @@
     "PatternIsADirectory": "ms-resource:loc.messages.PatternIsADirectory",
     "SearchingFileMatchingPattern": "ms-resource:loc.messages.SearchingFileMatchingPattern",
     "IssuesFetchError": "ms-resource:loc.messages.IssuesFetchError",
+    "NonBlockingIssuesFetchError": "ms-resource:loc.messages.NonBlockingIssuesFetchError",
     "NoIssuesLinkedError": "ms-resource:loc.messages.NoIssuesLinkedError",
     "LabelsSyntaxError": "ms-resource:loc.messages.LabelsSyntaxError",
     "InvalidChangeLogTypeAttribute": "ms-resource:loc.messages.InvalidChangeLogTypeAttribute",

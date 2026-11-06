@@ -2,8 +2,22 @@ import { IExecSyncResult } from 'azure-pipelines-task-lib/toolrunner';
 import path = require("path");
 import tl = require("azure-pipelines-task-lib/task");
 import fs = require("fs");
-import util = require("util");
 import os = require("os");
+import { getHandlerFromToken, WebApi } from "azure-devops-node-api";
+import { ITaskApi } from "azure-devops-node-api/TaskApi";
+import { createPerInvocationAzureConfigDir, removePerInvocationAzureConfigDir } from "./src/AzureCliConfigDir";
+import { createServicePrincipalCertificate, removeServicePrincipalCertificate } from "./src/AzureCliCredentialFile";
+
+const nodeVersion = parseInt(process.version.split('.')[0].replace('v', ''));
+if (nodeVersion > 16) {
+    require("dns").setDefaultResultOrder("ipv4first");
+    tl.debug("Set default DNS lookup order to ipv4 first");
+}
+
+if (nodeVersion > 19) {
+    require("net").setDefaultAutoSelectFamily(false);
+    tl.debug("Set default auto select family to false");
+}
 
 export class azureclitask {
     public static checkIfAzurePythonSdkIsInstalled() {
@@ -12,6 +26,11 @@ export class azureclitask {
 
     public static async runMain() {
         var toolExecutionError = null;
+        this.isAzureCLICredentialFileIsolationEnabled = tl.getPipelineFeature('AzureCLICredentialFileIsolationEnabled');
+        if (this.isAzureCLICredentialFileIsolationEnabled) {
+            this.cliPasswordPath = null;
+            this.cliCredentialDirectory = null;
+        }
         try {
             var tool;
             if (os.type() != "Windows_NT") {
@@ -62,21 +81,29 @@ export class azureclitask {
             this.setConfigDirectory();
             this.setAzureCloudBasedOnServiceEndpoint();
             var connectedService: string = tl.getInput("connectedServiceNameARM", true);
-            this.loginAzureRM(connectedService);
+            await this.loginAzureRM(connectedService);
 
             tool.line(args); // additional args should always call line. line() parses quoted arg strings
 
             var addSpnToEnvironment = tl.getBoolInput("addSpnToEnvironment", false);
-            if (!!addSpnToEnvironment && tl.getEndpointAuthorizationScheme(connectedService, true) == "ServicePrincipal") {
-                await tool.exec({
+            var authorizationScheme = tl.getEndpointAuthorizationScheme(connectedService, true).toLowerCase();
+            if (!!addSpnToEnvironment && authorizationScheme == 'serviceprincipal') {
+                  await tool.exec({
                     failOnStdErr: failOnStdErr,
-                    env: { ...process.env, ...{ servicePrincipalId: this.servicePrincipalId, servicePrincipalKey: this.servicePrincipalKey, tenantId: this.tenantId } }
-                });
+                    env: {
+                      ...process.env,
+                      ...{ servicePrincipalId: this.servicePrincipalId, servicePrincipalKey: this.servicePrincipalKey, tenantId: this.tenantId }
+                    }
+                  });                
+            } else if (!!addSpnToEnvironment && authorizationScheme == 'workloadidentityfederation') {
+                  await tool.exec({
+                    failOnStdErr: failOnStdErr,
+                    env: { ...process.env, ...{ servicePrincipalId: this.servicePrincipalId, idToken: this.federatedToken, tenantId: this.tenantId } }
+                  });
             }
             else {
                 await tool.exec({ failOnStdErr: failOnStdErr });
             }
-
         }
         catch (err) {
             if (err.stderr) {
@@ -92,37 +119,79 @@ export class azureclitask {
                 this.deleteFile(scriptPath);
             }
 
-            if (this.cliPasswordPath) {
+            if (this.isAzureCLICredentialFileIsolationEnabled) {
+                removeServicePrincipalCertificate(this.cliPasswordPath, this.cliCredentialDirectory);
+                this.cliPasswordPath = null;
+                this.cliCredentialDirectory = null;
+            } else if (this.cliPasswordPath) {
                 tl.debug('Removing spn certificate file');
                 tl.rmRF(this.cliPasswordPath);
             }
 
             //set the task result to either succeeded or failed based on error was thrown or not
             if (toolExecutionError) {
-                tl.setResult(tl.TaskResult.Failed, tl.loc("ScriptFailed", toolExecutionError));
+                let message = tl.loc('ScriptFailed', toolExecutionError);
+
+                if (typeof toolExecutionError === 'string') {
+                  const expiredSecretErrorCode = 'AADSTS7000222';
+                  let serviceEndpointSecretIsExpired = toolExecutionError.indexOf(expiredSecretErrorCode) >= 0;
+                  
+                  if (serviceEndpointSecretIsExpired) {
+                    const organizationURL = tl.getVariable('System.CollectionUri');
+                    const projectName = tl.getVariable('System.TeamProject');
+                    const serviceConnectionLink = encodeURI(`${organizationURL}${projectName}/_settings/adminservices?resourceId=${connectedService}`);
+        
+                    message = tl.loc('ExpiredServicePrincipalMessageWithLink', serviceConnectionLink);
+                  }
+                }
+
+                // only Aggregation error contains array of errors
+                if (toolExecutionError.errors) {
+                    // Iterates through array and log errors separately
+                    toolExecutionError.errors.forEach((error) => {
+                        tl.error(error.message, tl.IssueSource.TaskInternal);
+                    });
+                    
+                    // fail with main message
+                    tl.setResult(tl.TaskResult.Failed, toolExecutionError.message);
+                } else {
+                    tl.setResult(tl.TaskResult.Failed, message);
+                }
             }
             else {
                 tl.setResult(tl.TaskResult.Succeeded, tl.loc("ScriptReturnCode", 0));
             }
-            
+
             //Logout of Azure if logged in
             if (this.isLoggedIn) {
                 this.logoutAzure();
+            }
+
+            // Must run AFTER all `az` cleanup commands (logoutAzure → `az account clear`)
+            // so they still see the per-invocation profile. Removing it earlier would
+            // unset AZURE_CONFIG_DIR and cause `az` to mutate the agent's global profile.
+            if (this.azCliConfigPath) {
+                removePerInvocationAzureConfigDir(this.azCliConfigPath);
+                this.azCliConfigPath = null;
             }
         }
     }
 
     private static isLoggedIn: boolean = false;
     private static cliPasswordPath: string = null;
+    private static cliCredentialDirectory: string = null;
+    private static isAzureCLICredentialFileIsolationEnabled: boolean = false;
+    private static azCliConfigPath: string = null;
     private static servicePrincipalId: string = null;
     private static servicePrincipalKey: string = null;
+    private static federatedToken: string = null;
     private static tenantId: string = null;
 
-    private static loginAzureRM(connectedService: string): void {
+    private static async loginAzureRM(connectedService: string):Promise<void> {
         var authScheme: string = tl.getEndpointAuthorizationScheme(connectedService, true);
         var subscriptionID: string = tl.getEndpointDataParameter(connectedService, "SubscriptionID", true);
 
-        if(authScheme.toLowerCase() == "serviceprincipal") {
+        if (authScheme.toLowerCase() == "serviceprincipal") {
             let authType: string = tl.getEndpointAuthorizationParameter(connectedService, 'authenticationType', true);
             let cliPassword: string = null;
             var servicePrincipalId: string = tl.getEndpointAuthorizationParameter(connectedService, "serviceprincipalid", false);
@@ -134,8 +203,14 @@ export class azureclitask {
             if (authType == "spnCertificate") {
                 tl.debug('certificate based endpoint');
                 let certificateContent: string = tl.getEndpointAuthorizationParameter(connectedService, "servicePrincipalCertificate", false);
-                cliPassword = path.join(tl.getVariable('Agent.TempDirectory') || tl.getVariable('system.DefaultWorkingDirectory'), 'spnCert.pem');
-                fs.writeFileSync(cliPassword, certificateContent);
+                if (this.isAzureCLICredentialFileIsolationEnabled) {
+                    const certificate = createServicePrincipalCertificate(tl.getVariable('Agent.TempDirectory'), certificateContent);
+                    cliPassword = certificate.certificatePath;
+                    this.cliCredentialDirectory = certificate.directoryPath;
+                } else {
+                    cliPassword = path.join(tl.getVariable('Agent.TempDirectory') || tl.getVariable('system.DefaultWorkingDirectory'), 'spnCert.pem');
+                    fs.writeFileSync(cliPassword, certificateContent);
+                }
                 this.cliPasswordPath = cliPassword;
             }
             else {
@@ -149,9 +224,24 @@ export class azureclitask {
             //login using svn
             this.throwIfError(tl.execSync("az", `login --service-principal -u "${servicePrincipalId}" --password="${escapedCliPassword}" --tenant "${tenantId}"`), tl.loc("LoginFailed"));
         }
-        else if(authScheme.toLowerCase() == "managedserviceidentity") {
+        else if (authScheme.toLowerCase() == "managedserviceidentity") {
             //login using msi
             this.throwIfError(tl.execSync("az", "login --identity"), tl.loc("MSILoginFailed"));
+        }
+        else if (authScheme.toLowerCase() == "workloadidentityfederation") {
+            var servicePrincipalId: string = tl.getEndpointAuthorizationParameter(connectedService, "serviceprincipalid", false);
+            var tenantId: string = tl.getEndpointAuthorizationParameter(connectedService, "tenantid", false);
+
+            const federatedToken = await this.getIdToken(connectedService);
+            tl.setSecret(federatedToken);
+            const args = `login --service-principal -u "${servicePrincipalId}" --tenant "${tenantId}" --allow-no-subscriptions --federated-token "${federatedToken}"`;
+
+            //login using OpenID Connect federation
+            this.throwIfError(tl.execSync("az", args), tl.loc("LoginFailed"));
+
+            this.servicePrincipalId = servicePrincipalId;
+            this.federatedToken = federatedToken;
+            this.tenantId = tenantId;
         }
         else{
             throw tl.loc('AuthSchemeNotSupported', authScheme);
@@ -167,10 +257,13 @@ export class azureclitask {
             return;
         }
 
-        if (!!tl.getVariable('Agent.TempDirectory')) {
-            var azCliConfigPath = path.join(tl.getVariable('Agent.TempDirectory'), ".azclitask");
-            console.log(tl.loc('SettingAzureConfigDir', azCliConfigPath));
-            process.env['AZURE_CONFIG_DIR'] = azCliConfigPath;
+        const agentTempDir = tl.getVariable('Agent.TempDirectory');
+        if (!!agentTempDir) {
+            // Security: create an unpredictable per-invocation
+            // directory so an earlier pipeline step cannot pre-seed a poisoned
+            // az config file at $(Agent.TempDirectory)/.azclitask/config.
+            this.azCliConfigPath = createPerInvocationAzureConfigDir(agentTempDir);
+            console.log(tl.loc('SettingAzureConfigDir', this.azCliConfigPath));
         } else {
             console.warn(tl.loc('GlobalCliConfigAgentVersionWarning'));
         }
@@ -225,6 +318,42 @@ export class azureclitask {
                 //error while deleting should not result in task failure
                 console.error(err.toString());
             }
+        }
+    }
+
+    private static async getIdToken(connectedService: string) : Promise<string> {
+        // since node19 default node's GlobalAgent has timeout 5sec
+        // keepAlive is set to true to avoid creating default node's GlobalAgent
+        const webApiOptions = {
+            keepAlive: true
+        }
+        const jobId = tl.getVariable("System.JobId");
+        const planId = tl.getVariable("System.PlanId");
+        const projectId = tl.getVariable("System.TeamProjectId");
+        const hub = tl.getVariable("System.HostType");
+        const uri = tl.getVariable("System.CollectionUri");
+        const token = this.getSystemAccessToken();
+
+        const authHandler = getHandlerFromToken(token);
+        const connection = new WebApi(uri, authHandler, webApiOptions);
+        const api: ITaskApi = await connection.getTaskApi();
+        const response = await api.createOidcToken({}, projectId, hub, planId, jobId, connectedService);
+        if (response == null) {
+            return null;
+        }
+
+        return response.oidcToken;
+    }
+
+    private static getSystemAccessToken() : string {
+        tl.debug('Getting credentials for local feeds');
+        const auth = tl.getEndpointAuthorization('SYSTEMVSSCONNECTION', false);
+        if (auth.scheme === 'OAuth') {
+            tl.debug('Got auth token');
+            return auth.parameters['AccessToken'];
+        }
+        else {
+            tl.warning('Could not determine credentials to use');
         }
     }
 }

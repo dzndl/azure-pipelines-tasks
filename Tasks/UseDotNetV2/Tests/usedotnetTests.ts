@@ -4,8 +4,9 @@ import * as tl from 'azure-pipelines-task-lib/task';
 import { Constants } from '../versionutilities';
 import { VersionInfo } from '../models';
 import { setFlagsFromString } from 'v8';
+import fs = require('fs');
 
-let mockery = require('mockery');
+let mockery = require('azure-pipelines-task-lib/lib-mocker');
 let osType = "win";
 
 //setup mocks
@@ -16,6 +17,7 @@ mockery.enable({
 });
 
 mockery.registerMock('fs', {
+    ...fs,
     lstatSync: function (elementPath: string) {
         if (elementPath.indexOf(".") > -1 && !elementPath.endsWith("1.0.0") && !elementPath.endsWith("2.0.0") && !elementPath.endsWith("2.1.0")) {
             return {
@@ -163,9 +165,9 @@ mockery.registerMock('./versioninstaller', {
 mockery.registerMock('./nugetinstaller', {
     NuGetInstaller: {
         installNuGet: function (version) {
-            return new Promise((resolve, reject) => {
+            return new Promise<void>((resolve, reject) => {
                 resolve();
-            })
+            });
         }
     }
 });

@@ -9,14 +9,14 @@
   "author": "Microsoft Corporation",
   "version": {
     "Major": 2,
-    "Minor": 179,
-    "Patch": 0
+    "Minor": 282,
+    "Patch": 1
   },
   "runsOn": [
     "Agent",
     "DeploymentGroup"
   ],
-  "minimumAgentVersion": "2.115.0",
+  "minimumAgentVersion": "2.144.0",
   "groups": [
     {
       "name": "restoreAuth",
@@ -250,6 +250,15 @@
       "visibleRule": "command = push && nuGetFeedType = internal"
     },
     {
+      "name": "requestTimeout",
+      "type": "int",
+      "label": "ms-resource:loc.input.label.requestTimeout",
+      "required": false,
+      "groupName": "pushAdvanced",
+      "helpMarkDown": "ms-resource:loc.input.help.requestTimeout",
+      "visibleRule": "command = push"
+    },
+    {
       "name": "externalEndpoint",
       "aliases": [
         "publishFeedCredentials"
@@ -472,7 +481,19 @@
     }
   ],
   "execution": {
-    "Node": {
+    "Node10": {
+      "target": "nugetcommandmain.js",
+      "argumentFormat": ""
+    },
+    "Node16": {
+      "target": "nugetcommandmain.js",
+      "argumentFormat": ""
+    },
+    "Node20_1": {
+      "target": "nugetcommandmain.js",
+      "argumentFormat": ""
+    },
+    "Node24": {
       "target": "nugetcommandmain.js",
       "argumentFormat": ""
     }
@@ -508,8 +529,11 @@
     "Error_PushNotARegularFile": "ms-resource:loc.messages.Error_PushNotARegularFile",
     "Warning_AllowDuplicatesOnlyAvailableHosted": "ms-resource:loc.messages.Warning_AllowDuplicatesOnlyAvailableHosted",
     "Warning_SkipConflictsNotSupportedUnixAgents": "ms-resource:loc.messages.Warning_SkipConflictsNotSupportedUnixAgents",
+    "Warning_NegativeRequestTimeoutIgnored": "ms-resource:loc.messages.Warning_NegativeRequestTimeoutIgnored",
+    "Warning_InvalidRequestTimeoutIgnored": "ms-resource:loc.messages.Warning_InvalidRequestTimeoutIgnored",
     "Error_CommandNotRecognized": "ms-resource:loc.messages.Error_CommandNotRecognized",
     "Error_ApiKeyNotSupported": "ms-resource:loc.messages.Error_ApiKeyNotSupported",
+    "Error_ApiKeyRequiresNuGet76": "ms-resource:loc.messages.Error_ApiKeyRequiresNuGet76",
     "Error_ExpectedConfigurationElement": "ms-resource:loc.messages.Error_ExpectedConfigurationElement",
     "Error_NoMatchingFilesFoundForPattern": "ms-resource:loc.messages.Error_NoMatchingFilesFoundForPattern",
     "Error_NoUrlWasFoundWhichMatches": "ms-resource:loc.messages.Error_NoUrlWasFoundWhichMatches",
@@ -536,6 +560,11 @@
     "NGCommon_UnableToFindTool": "ms-resource:loc.messages.NGCommon_UnableToFindTool",
     "Warning_SessionCreationFailed": "ms-resource:loc.messages.Warning_SessionCreationFailed",
     "Warning_UpdatingNuGetVersion": "ms-resource:loc.messages.Warning_UpdatingNuGetVersion",
-    "Error_NugetFailedWithCodeAndErr": "ms-resource:loc.messages.Error_NugetFailedWithCodeAndErr"
+    "Error_NugetFailedWithCodeAndErr": "ms-resource:loc.messages.Error_NugetFailedWithCodeAndErr",
+    "Warning_IncludeNuGetOrgEnabled": "ms-resource:loc.messages.Warning_IncludeNuGetOrgEnabled",
+    "Error_IncludeNuGetOrgEnabled": "ms-resource:loc.messages.Error_IncludeNuGetOrgEnabled",
+    "Warning_UnsupportedServiceConnectionAuth": "ms-resource:loc.messages.Warning_UnsupportedServiceConnectionAuth",
+    "LIB_WhichNotFound_Linux": "ms-resource:loc.messages.LIB_WhichNotFound_Linux",
+    "Error_IncompatibleUbuntuVersion": "ms-resource:loc.messages.Error_IncompatibleUbuntuVersion"
   }
 }

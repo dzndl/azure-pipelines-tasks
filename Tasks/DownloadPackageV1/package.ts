@@ -1,4 +1,3 @@
-var fs = require("fs");
 var path = require("path");
 
 import * as tl from "azure-pipelines-task-lib/task";
@@ -11,9 +10,13 @@ import { ICoreApi } from "azure-devops-node-api/CoreApi";
 import stream = require("stream");
 
 export class PackageFileResult {
+    private fileName: string;
     private value: string;
     private isUrl: boolean;
 
+    get FileName() {
+        return this.fileName;
+    }
     get Value() {
         return this.value;
     }
@@ -21,7 +24,8 @@ export class PackageFileResult {
         return this.isUrl;
     }
 
-    constructor(value: string, isUrl: boolean) {
+    constructor(fileName: string, value: string, isUrl: boolean) {
+        this.fileName = fileName;
         this.value = value;
         this.isUrl = isUrl;
     }
@@ -49,7 +53,7 @@ export abstract class Package {
         this.executeWithRetries = builder.ExecuteWithRetries;
     }
 
-    protected abstract async getDownloadUrls(
+    protected abstract  getDownloadUrls(
         feedId: string,
         project: string,
         packageId: string,
@@ -144,20 +148,21 @@ export abstract class Package {
     ): Promise<string> {
         const routeValues = {
             feedId: feedId,
-            project: project
+            project: project,
+            packageId: packageId
         };
         const queryParams = {
-            packageIdQuery: packageId,
             protocolType: this.packageProtocolAreaName
         };
 
         return new Promise<string>(async (resolve, reject) => {
             this.getPackageMetadata(this.feedConnection, routeValues, queryParams, this.getPackagesAreaId)
             .then(packages => {
-                tl.debug("Found " + packages["count"] + " packages matching search pattern " + packageId);
-                for (let i = 0; i < packages["count"]; i++) {
-                    if (packages["value"][i]["id"] == packageId && packages["value"][i]["versions"][0]["isListed"]) {
-                        return resolve(packages["value"][i]["versions"][0]["normalizedVersion"]);
+                if(packages["id"] == packageId) {
+                    let versions = packages["versions"];
+                    tl.debug("Found " + versions?.length + " packages matching search pattern " + packageId);
+                    if (versions[0]["isListed"]) {
+                        return resolve(versions[0]["normalizedVersion"]);
                     }
                 }
                 return reject("Latest version not found."); 
@@ -186,7 +191,7 @@ export abstract class Package {
                     var coreApi = await this.pkgsConnection.getCoreApi();
                     Object.keys(downloadUrls).map(fileName => {
                         const packageFile = new PackageFile(extract, downloadPath, fileName);
-                        tl.rmRF(packageFile.downloadPath);
+                        packageFile.removeExisting();
                         promises.push(
                             downloadUrls[fileName].IsUrl
                                 ? this.downloadFile(coreApi, downloadUrls[fileName].Value, packageFile)
@@ -204,16 +209,13 @@ export abstract class Package {
     }
 
     private async writeFile(content: string, packageFile: PackageFile): Promise<PackageFile> {
-        return new Promise<PackageFile>((resolve, reject) => {
-            fs.writeFile(packageFile.downloadPath, content, err => {
-                if (err) {
-                    tl.debug("Writing file content failed with error: " + err);
-                    return reject(err);
-                } else {
-                    return resolve(packageFile);
-                }
-            });
-        });
+        try {
+            await packageFile.writeContent(content);
+            return packageFile;
+        } catch (error) {
+            tl.debug("Writing file content failed with error: " + error);
+            throw error;
+        }
     }
 
     private async downloadFile(
@@ -226,7 +228,7 @@ export abstract class Package {
                 coreApi.http.get(downloadUrl).then(response => {
                     if (response.message.statusCode >= 200 && response.message.statusCode < 300) {
                         var responseStream = response.message as stream.Readable;
-                        var file = fs.createWriteStream(packageFile.downloadPath);
+                        var file = packageFile.createWriteStream();
 
                         responseStream.pipe(file);
 

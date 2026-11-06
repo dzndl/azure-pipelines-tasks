@@ -17,7 +17,7 @@
   "author": "Microsoft Corporation",
   "version": {
     "Major": 3,
-    "Minor": 189,
+    "Minor": 282,
     "Patch": 0
   },
   "releaseNotes": "ms-resource:loc.releaseNotes",
@@ -94,20 +94,12 @@
       "groupName": "advanced"
     },
     {
-      "name": "noProfile",
-      "type": "boolean",
-      "label": "ms-resource:loc.input.label.noProfile",
-      "defaultValue": "true",
+      "name": "bashEnvValue",
+      "type": "string",
+      "label": "ms-resource:loc.input.label.bashEnvValue",
+      "defaultValue": "",
       "required": false,
-      "helpMarkDown": "ms-resource:loc.input.help.noProfile",
-      "groupName": "advanced"
-    },
-    {
-      "name": "noRc",
-      "type": "boolean",
-      "label": "ms-resource:loc.input.label.noRc",
-      "defaultValue": "true",
-      "required": false,
+      "helpMarkDown": "ms-resource:loc.input.help.bashEnvValue",
       "groupName": "advanced"
     }
   ],
@@ -115,15 +107,30 @@
     "Node10": {
       "target": "bash.js",
       "argumentFormat": ""
+    },
+    "Node16": {
+      "target": "bash.js",
+      "argumentFormat": ""
+    },
+    "Node20_1": {
+      "target": "bash.js",
+      "argumentFormat": ""
+    },
+    "Node24": {
+      "target": "bash.js",
+      "argumentFormat": ""
     }
   },
   "messages": {
     "GeneratingScript": "ms-resource:loc.messages.GeneratingScript",
     "JS_ExitCode": "ms-resource:loc.messages.JS_ExitCode",
+    "JS_ExitCode_137": "ms-resource:loc.messages.JS_ExitCode_137",
     "JS_FormattedCommand": "ms-resource:loc.messages.JS_FormattedCommand",
     "JS_InvalidFilePath": "ms-resource:loc.messages.JS_InvalidFilePath",
     "JS_ScriptContents": "ms-resource:loc.messages.JS_ScriptContents",
     "JS_Stderr": "ms-resource:loc.messages.JS_Stderr",
-    "JS_TranslatePathFailed": "ms-resource:loc.messages.JS_TranslatePathFailed"
+    "JS_TranslatePathFailed": "ms-resource:loc.messages.JS_TranslatePathFailed",
+    "JS_BashEnvAlreadyDefined": "ms-resource:loc.messages.JS_BashEnvAlreadyDefined",
+    "ScriptArgsSanitized": "ms-resource:loc.messages.ScriptArgsSanitized"
   }
 }

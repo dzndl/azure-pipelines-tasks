@@ -200,7 +200,9 @@ export class JavaFilesExtractor {
                 rootDirectoriesArray.push(rootItem);
             }
         });
-
+        if(rootDirectoriesArray.length == 0) {
+            throw new Error(taskLib.loc('WrongArchiveFile'));
+        }
         let jdkDirectory: string;
         if (rootDirectoriesArray.find(dir => dir === BIN_FOLDER)){
             jdkDirectory = pathToStructure;
@@ -238,7 +240,7 @@ export class JavaFilesExtractor {
         }
 
         const jdkFile = path.normalize(repoRoot);
-        let stats: taskLib.FsStats;
+        let stats: fs.Stats;
         try {
             stats = taskLib.stats(jdkFile);
         } catch (error) {

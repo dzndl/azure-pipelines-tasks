@@ -6,8 +6,10 @@ import * as path from "path";
 import * as tl from "azure-pipelines-task-lib/task";
 import * as os from "os";
 import * as util from "util";
+import * as toolLib from "azure-pipelines-tool-lib/tool";
 
-import downloadutility = require("utility-common-v2/downloadutility");
+
+import kubectlutility = require("azure-pipelines-tasks-kubernetes-common/kubectlutility");
 
 export function getTempDirectory(): string {
     return tl.getVariable('agent.tempDirectory') || os.tmpdir();
@@ -34,23 +36,31 @@ function ensureDirExists(dirPath : string) : void
     }
 }
 
+// The kubectl version is embedded in the download URL, which azure-pipelines-tool-lib writes to the task log.
+// Only a semantic version is accepted so the value can never carry URL delimiters or logging-command markers.
+export function validateKubectlVersion(version: string, invalidMessageKey: "InvalidKubectlVersion" | "InvalidStableKubectlVersion" = "InvalidKubectlVersion"): string {
+    const cleanVersion = version ? toolLib.cleanVersion(version) : null;
+    if (!cleanVersion) {
+        throw new Error(tl.loc(invalidMessageKey));
+    }
+
+    return "v".concat(cleanVersion);
+}
+
 export async function getKubectlVersion(versionSpec: string, checkLatest: boolean) : Promise<string> {
    let version: string = "v1.6.6";   
 
    if(checkLatest) {
-        return getStableKubectlVersion();
+        return validateKubectlVersion(await getStableKubectlVersion(), "InvalidStableKubectlVersion");
    }
    else if (versionSpec) {
        if(versionSpec === "1.7") {
            // Backward compat handle
            tl.warning(tl.loc("UsingLatestStableVersion"));
-           return getStableKubectlVersion();
+           return validateKubectlVersion(await getStableKubectlVersion(), "InvalidStableKubectlVersion");
        } 
-       else if(!versionSpec.startsWith("v")) {
-           version = "v".concat(versionSpec);
-       }
        else {
-            version = versionSpec;
+           version = validateKubectlVersion(versionSpec);
        } 
     }
 
@@ -58,52 +68,37 @@ export async function getKubectlVersion(versionSpec: string, checkLatest: boolea
 }
 
 export async function getStableKubectlVersion() : Promise<string> {
-    var stableVersion = "v1.6.6";
-    var version;
-    var stableVersionUrl = "https://storage.googleapis.com/kubernetes-release/release/stable.txt";
-    var downloadPath = path.join(getTempDirectory(), getCurrentTime().toString()+".txt");
-    return downloadutility.download(stableVersionUrl, downloadPath, false, true).then((resolve) => {
-        version = fs.readFileSync(downloadPath, "utf8").toString().trim();
-        if(!version){
-            version = stableVersion;
-        }
-        return version;
-    },
-    (reject) => {
-        tl.debug(reject);
-        tl.warning(tl.loc('DownloadStableVersionFailed', stableVersionUrl, stableVersion));
-        return stableVersion;
-    })
+    return await kubectlutility.getStableKubectlVersion();
 }
 
 export async function downloadKubectl(version: string, kubectlPath: string): Promise<string> {
+    version = validateKubectlVersion(version);
     var kubectlURL = getkubectlDownloadURL(version);
     tl.debug(tl.loc('DownloadingKubeCtlFromUrl', kubectlURL));
-    var kubectlPathTmp = kubectlPath+".tmp";
-    return downloadutility.download(kubectlURL, kubectlPathTmp, false, true).then( (res) => {
-            tl.cp(kubectlPathTmp, kubectlPath, "-f");
-            fs.chmodSync(kubectlPath, "777");
-            assertFileExists(kubectlPath);
-            return kubectlPath;
+    return toolLib.downloadTool(kubectlURL).then((downloadPath) => {
+        tl.cp(downloadPath, kubectlPath, "-f");
+        fs.chmodSync(kubectlPath, "755");
+        assertFileExists(kubectlPath);
+        return kubectlPath;
     },
     (reason) => {
         //Download kubectl client failed.
         throw new Error(tl.loc('DownloadKubeCtlFailed', version));
-    }); 
+    });
 }
 
 function getkubectlDownloadURL(version: string) : string {
     switch(os.type())
     {
         case 'Linux':
-            return util.format("https://storage.googleapis.com/kubernetes-release/release/%s/bin/linux/amd64/kubectl", version);
+            return util.format("https://dl.k8s.io/release/%s/bin/linux/amd64/kubectl", version);
 
         case 'Darwin':
-            return util.format("https://storage.googleapis.com/kubernetes-release/release/%s/bin/darwin/amd64/kubectl", version);
+            return util.format("https://dl.k8s.io/release/%s/bin/darwin/amd64/kubectl", version);
 
         default:
         case 'Windows_NT':
-            return util.format("https://storage.googleapis.com/kubernetes-release/release/%s/bin/windows/amd64/kubectl.exe", version);   
+            return util.format("https://dl.k8s.io/release/%s/bin/windows/amd64/kubectl.exe", version);   
 
     }
 }

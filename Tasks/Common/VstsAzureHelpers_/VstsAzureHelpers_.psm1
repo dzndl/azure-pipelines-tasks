@@ -1,4 +1,8 @@
-﻿# Private module-scope variables.
+﻿$featureFlags = @{
+    retireAzureRM = [System.Convert]::ToBoolean($env:RETIRE_AZURERM_POWERSHELL_MODULE)
+}
+
+# Private module-scope variables.
 $script:azureModule = $null
 $script:azureRMProfileModule = $null
 
@@ -17,17 +21,40 @@ Import-Module $PSScriptRoot/../TlsHelper_
 Add-Tls12InSession
 
 # Dot source the private functions.
+if (-not $featureFlags.retireAzureRM) {
+    . $PSScriptRoot/ImportFunctions.ps1
+    . $PSScriptRoot/InitializeAzureRMFunctions.ps1
+
+    # we need to find out if it is safe to remove RETIRE_AZURERM_POWERSHELL_MODULE env variable
+    try {
+        $telemetry = @{
+            'RETIRE_AZURERM_POWERSHELL_MODULE' = $env:RETIRE_AZURERM_POWERSHELL_MODULE
+            'SYSTEM_TASKDISPLAYNAME'           = $env:SYSTEM_TASKDISPLAYNAME
+            'SYSTEM_TEAMFOUNDATIONSERVERURI'   = $env:SYSTEM_TEAMFOUNDATIONSERVERURI
+            'SYSTEM_TEAMPROJECT'               = $env:SYSTEM_TEAMPROJECT
+            'SYSTEM_DEFINITIONID'              = $env:SYSTEM_DEFINITIONID
+            'SYSTEM_JOBIDENTIFIER'             = $env:SYSTEM_JOBIDENTIFIER
+        }
+
+        $json = $telemetry | ConvertTo-Json -Compress
+        Write-Host "##vso[telemetry.publish area=TaskHub;feature=RetireAzureRmPowershellModuleDeprecation]$json"
+    }
+    catch {
+        Write-Warning "Failed to publish telemetry: $($_.Exception.Message)"
+    }
+}
 . $PSScriptRoot/InitializeFunctions.ps1
-. $PSScriptRoot/ImportFunctions.ps1
-. $PSScriptRoot/InitializeAzureRMFunctions.ps1
 . $PSScriptRoot/InitializeAzModuleFunctions.ps1
 . $PSScriptRoot/PsModuleUtility.ps1
 
 # This is the only public function.
 function Initialize-Azure {
     [CmdletBinding()]
-    param( [string] $azurePsVersion,
-           [switch] $strict )
+    param(
+        [string] $azurePsVersion,
+        [switch] $strict
+    )
+
     Trace-VstsEnteringInvocation $MyInvocation
     try {
         # Get the inputs.
@@ -41,26 +68,36 @@ function Initialize-Azure {
         $endpoint = Get-VstsEndpoint -Name $serviceName -Require
         $storageAccount = Get-VstsInput -Name StorageAccount
 
-        # Determine which modules are preferred.
-        $preferredModules = @( )
-        if (($endpoint.Auth.Scheme -eq 'ServicePrincipal') -or ($endpoint.Auth.Scheme -eq 'ManagedServiceIdentity')) {
-            $preferredModules += 'AzureRM'
-        } elseif ($endpoint.Auth.Scheme -eq 'UserNamePassword' -and $strict -eq $false) {
-            $preferredModules += 'Azure'
-            $preferredModules += 'AzureRM'
-        } else {
-            $preferredModules += 'Azure'
-        }
-
         # Import/initialize the Azure module.
         $currentWarningPreference = $WarningPreference
         $WarningPreference = "SilentlyContinue"
-        Import-AzureModule -PreferredModule $preferredModules -azurePsVersion $azurePsVersion -strict:$strict
+
+        if ($featureFlags.retireAzureRM) {
+            Initialize-AzModule -Endpoint $endpoint
+        }
+        else {
+            # Determine which modules are preferred.
+            $preferredModules = @( )
+            if (($endpoint.Auth.Scheme -eq 'ServicePrincipal') -or ($endpoint.Auth.Scheme -eq 'ManagedServiceIdentity')) {
+                $preferredModules += 'AzureRM'
+            }
+            elseif ($endpoint.Auth.Scheme -eq 'UserNamePassword' -and $strict -eq $false) {
+                $preferredModules += 'Azure'
+                $preferredModules += 'AzureRM'
+            }
+            else {
+                $preferredModules += 'Azure'
+            }
+
+            Import-AzureModule -PreferredModule $preferredModules -azurePsVersion $azurePsVersion -strict:$strict
+        }
         Initialize-AzureSubscription -Endpoint $endpoint -StorageAccount $storageAccount
-    } finally {
+    }
+    finally {
         if (![string]::IsNullOrEmpty($currentWarningPreference)) {
             $WarningPreference = $currentWarningPreference
-        } else {
+        }
+        else {
             $WarningPreference = "Continue"
         }
         Trace-VstsLeavingInvocation $MyInvocation
@@ -71,8 +108,9 @@ function Initialize-Azure {
 Export-ModuleMember -Function Initialize-Azure
 Export-ModuleMember -Function CmdletHasMember
 Export-ModuleMember -Function Remove-EndpointSecrets
-Export-ModuleMember -Function Initialize-AzureRMModule
+if (-not $featureFlags.retireAzureRM) {
+    Export-ModuleMember -Function Initialize-AzureRMModule
+}
 Export-ModuleMember -Function Initialize-AzModule
 Export-ModuleMember -Function Disconnect-AzureAndClearContext
 Export-ModuleMember -Function Update-PSModulePathForHostedAgentWithLatestModule
-

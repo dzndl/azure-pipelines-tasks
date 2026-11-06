@@ -1,6 +1,8 @@
 Trace-VstsEnteringInvocation $MyInvocation
 Import-VstsLocStrings "$PSScriptRoot\Task.json"
 
+Import-Module $PSScriptRoot\ps_modules\Sanitizer
+
 # Get inputs.
 $scriptType = Get-VstsInput -Name ScriptType -Require
 $scriptPath = Get-VstsInput -Name ScriptPath
@@ -10,8 +12,13 @@ $__vsts_input_errorActionPreference = Get-VstsInput -Name errorActionPreference
 $__vsts_input_failOnStandardError = Get-VstsInput -Name FailOnStandardError -AsBool
 $targetAzurePs = Get-VstsInput -Name TargetAzurePs
 $customTargetAzurePs = Get-VstsInput -Name CustomTargetAzurePs
-$input_pwsh = Get-VstsInput -Name pwsh -AsBool
+$input_pwsh = Get-VstsInput -Name pwsh -AsBool -Default $false
 $input_workingDirectory = Get-VstsInput -Name workingDirectory -Require
+$validateScriptSignature = Get-VstsInput -Name validateScriptSignature -AsBool
+
+$hostEnv = "ADO/AzurePowerShell@v5`_$($env:AGENT_OS)`_$($env:AGENT_NAME)`_$($env:BUILD_DEFINITIONNAME)`_$($env:BUILD_BUILDID)`_$($env:RELEASE_DEFINITIONNAME)`_$($env:RELEASE_RELEASEID)"
+$env:AZUREPS_HOST_ENVIRONMENT = $hostEnv
+Write-Host "AZUREPS_HOST_ENVIRONMENT: $env:AZUREPS_HOST_ENVIRONMENT"
 
 # Validate the script path and args do not contains new-lines. Otherwise, it will
 # break invoking the script via Invoke-Expression.
@@ -25,12 +32,25 @@ if ($scriptArguments -match '[\r\n]') {
     throw (Get-VstsLocString -Key InvalidScriptArguments0 -ArgumentList $scriptArguments)
 }
 
+# Sanitize script arguments to prevent PowerShell command injection.
+# No-op unless BOTH the org-level "Enable shell tasks arguments validation"
+# toggle and the per-task pipeline feature flag are enabled.
+# See https://aka.ms/ado/75787 and Tasks/Common/Sanitizer/Invoke-ScriptArgumentSanitization.ps1.
+if ($scriptType -ne "InlineScript") {
+    Invoke-ScriptArgumentSanitization `
+        -InputArgs $scriptArguments `
+        -TaskName 'AzurePowerShellV5' `
+        -PipelineFeatureFlagName 'EnableAzurePowerShellArgumentsSanitization'
+}
+
 # string constants
 $otherVersion = "OtherVersion"
 $latestVersion = "LatestVersion"
+$versionTolerance = 3
 
+. (Join-Path $PSScriptRoot "Utility.ps1") 
 if ($targetAzurePs -eq $otherVersion) {
-    if ($customTargetAzurePs -eq $null) {
+    if ($null -eq $customTargetAzurePs) {
         throw (Get-VstsLocString -Key InvalidAzurePsVersion $customTargetAzurePs)
     } else {
         $targetAzurePs = $customTargetAzurePs.Trim()
@@ -42,19 +62,48 @@ $regex = New-Object -TypeName System.Text.RegularExpressions.Regex -ArgumentList
 
 if ($targetAzurePs -eq $latestVersion) {
     $targetAzurePs = ""
+      
 } elseif (-not($regex.IsMatch($targetAzurePs))) {
     throw (Get-VstsLocString -Key InvalidAzurePsVersion -ArgumentList $targetAzurePs)
 }
 
 . $PSScriptRoot\TryMakingModuleAvailable.ps1 -targetVersion "$targetAzurePs" -platform Windows
 
+Initialize-ModuleVersionValidation -moduleName "azure-powershell" -targetAzurePs $targetAzurePs -displayModuleName "Az" -versionsToReduce $versionTolerance 
+
+if ($validateScriptSignature) {
+    try {
+        if ($scriptType -ne "InlineScript") {
+            Write-Host "## Validating Script Signature"
+
+            # Validate script is signed
+            $scriptSignature = Get-AuthenticodeSignature $scriptPath
+            if ($scriptSignature.Status -eq "NotSigned") {
+                throw "Object does not have a digital signature. Please ensure your script is signed and try again."
+            }
+            elseif ($scriptSignature.Status -ne "Valid") {
+                throw "Digital signature of the object did not verify. Please ensure your script is properly signed and try again."
+            }
+
+            Write-Host "## Validating Script Signature Complete"
+        }
+    }
+    catch
+    {
+        $errorMsg = $_.Exception.Message
+        throw "Unable to validate script signature: $errorMsg"
+    }
+}
+
 . "$PSScriptRoot\Utility.ps1"
 
 $serviceName = Get-VstsInput -Name ConnectedServiceNameARM -Require
 $endpointObject = Get-VstsEndpoint -Name $serviceName -Require
-$endpoint = ConvertTo-Json $endpointObject
+$endpoint = (ConvertTo-Json $endpointObject).Replace("'", "''")
+$vstsEndpoint = Get-VstsEndpoint -Name SystemVssConnection -Require
+$vstsAccessToken = $vstsEndpoint.auth.parameters.AccessToken
 
-try 
+try
 {
     # Generate the script contents.
     Write-Host (Get-VstsLocString -Key 'GeneratingScript')
@@ -64,19 +113,27 @@ try
         $contents += "`$VerbosePreference = 'continue'"
     }
 
-    $CoreAzArgument = $null;
+    $CoreAzArgument = "-endpoint '$endpoint' -connectedServiceNameARM $serviceName -vstsAccessToken `$env:__VSTS_ACCESS_TOKEN -isPSCore $" + "$input_pwsh"
     if ($targetAzurePs) {
-        $CoreAzArgument = "-endpoint '$endpoint' -targetAzurePs $targetAzurePs"
-    } else {
-        $CoreAzArgument = "-endpoint '$endpoint'"
+        $CoreAzArgument += " -targetAzurePs $targetAzurePs"
     }
-    $contents += ". $PSScriptRoot\CoreAz.ps1 $CoreAzArgument"
+    $contents += "try {"
+    $contents += "    . '$PSScriptRoot\CoreAz.ps1' $CoreAzArgument"
+    $contents += "    `$env:__VSTS_ACCESS_TOKEN = `$null"
+    $contents += "    Remove-Variable -Name endpoint, endpointObject, connectedServiceNameARM, vstsAccessToken, encryptedToken -ErrorAction SilentlyContinue"
 
     if ($scriptType -eq "InlineScript") {
         $contents += "$scriptInline".Replace("`r`n", "`n").Replace("`n", "`r`n")
     } else {
         $contents += ". '$("$scriptPath".Replace("'", "''"))' $scriptArguments".Trim()
     }
+    $contents += "}"
+    $contents += "finally {"
+    $contents += "    `$env:__VSTS_ACCESS_TOKEN = `$null"
+    $contents += "    if (Get-Command -Name Remove-EndpointSecrets -ErrorAction SilentlyContinue) {"
+    $contents += "        Remove-EndpointSecrets"
+    $contents += "    }"
+    $contents += "}"
 
     # Write the script to disk.
     $__vstsAzPSScriptPath = [System.IO.Path]::Combine($env:Agent_TempDirectory, ([guid]::NewGuid().ToString() + ".ps1"));
@@ -104,6 +161,9 @@ try
         'Arguments' = $arguments
         'WorkingDirectory' = $input_workingDirectory
     }
+
+    # Pass the access token via environment variable so it is not written to disk.
+    $env:__VSTS_ACCESS_TOKEN = $vstsAccessToken
 
     # Switch to "Continue".
     $global:ErrorActionPreference = 'Continue'
@@ -134,7 +194,7 @@ try
                         $message = $errorLines.ToString().Trim()
                         $null = $errorLines.Clear()
                         if ($message) {
-                            Write-VstsTaskError -Message $message
+                            Write-VstsTaskError -Message $message -IssueSource $IssueSources.CustomerScript
                         }
                     }
 
@@ -148,7 +208,7 @@ try
             $message = $errorLines.ToString().Trim()
             $null = $errorLines.Clear()
             if ($message) {
-                Write-VstsTaskError -Message $message
+                Write-VstsTaskError -Message $message -IssueSource $IssueSources.CustomerScript
             }
         }
     }
@@ -164,11 +224,21 @@ try
     }
 }
 finally {
-    if ($__vstsAzPSInlineScriptPath -and (Test-Path -LiteralPath $__vstsAzPSInlineScriptPath) ) {
-        Remove-Item -LiteralPath $__vstsAzPSInlineScriptPath -ErrorAction 'SilentlyContinue'
-    }
+    # Clear the access token from the environment.
+    $env:__VSTS_ACCESS_TOKEN = ""
 
-    Import-Module $PSScriptRoot\ps_modules\VstsAzureHelpers_
+    if ($__vstsAzPSScriptPath -and (Test-Path -LiteralPath $__vstsAzPSScriptPath) ) {
+        Remove-Item -LiteralPath $__vstsAzPSScriptPath -ErrorAction 'SilentlyContinue'
+    }
+    . "$PSScriptRoot\Utility.ps1"
+    Import-Module "$PSScriptRoot\ps_modules\VstsAzureHelpers_"
     Remove-EndpointSecrets
-    Disconnect-AzureAndClearContext -ErrorAction SilentlyContinue
+    Update-PSModulePathForHostedAgent
+    Disconnect-AzureAndClearContext -restrictContext 'True' -ErrorAction SilentlyContinue
+
+    if ($env:AZURESUBSCRIPTION_SERVICE_CONNECTION_ID) {
+        $env:AZURESUBSCRIPTION_SERVICE_CONNECTION_ID = ""
+        $env:AZURESUBSCRIPTION_CLIENT_ID = ""
+        $env:AZURESUBSCRIPTION_TENANT_ID = ""
+    }
 }

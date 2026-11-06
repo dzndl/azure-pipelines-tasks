@@ -2,6 +2,7 @@
 param()
 
 . $PSScriptRoot\..\..\..\Tests\lib\Initialize-Test.ps1
+. $PSScriptRoot\..\..\Common\Sanitizer\ArgumentsSanitizer.ps1
 . $PSScriptRoot\MockVariable.ps1 -Force
 . $PSScriptRoot\MockHelper.ps1 -Force
 
@@ -12,6 +13,9 @@ Register-Mock Register-Environment { return GetEnvironmentWithStandardProvider $
 
 Register-Mock Get-EnvironmentProperty { return $validMachineName1 } -ParametersEvaluator {$Key -eq $resourceFQDNKeyName -and $ResourceId -eq $validMachineId1}
 Register-Mock Get-EnvironmentProperty { return $validMachineName2 } -ParametersEvaluator {$Key -eq $resourceFQDNKeyName -and $ResourceId -eq $validMachineId2}
+
+Register-Mock Get-SanitizerCallStatus { return $false }
+Register-Mock Get-SanitizerActivateStatus { return $false }
 
 #Start-Job Register-Mocks
 Register-Mock Start-Job { $testJobs.Add($Job1); return $job1} -ParametersEvaluator{$ArgumentList -contains $validResource1.Name }

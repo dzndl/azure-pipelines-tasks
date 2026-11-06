@@ -37,7 +37,7 @@
   "loc.input.label.jdkUserInputPath": "JDK path",
   "loc.input.help.jdkUserInputPath": "Sets JAVA_HOME to the given path.",
   "loc.input.label.jdkArchitecture": "JDK architecture",
-  "loc.input.help.jdkArchitecture": "Optionally supply the architecture (x86, x64) of the JDK.",
+  "loc.input.help.jdkArchitecture": "Optionally supply the architecture (x86, x64, arm64) of the JDK.",
   "loc.input.label.gradleOpts": "Set GRADLE_OPTS",
   "loc.input.help.gradleOpts": "Sets the GRADLE_OPTS environment variable, which is used to send command-line arguments to start the JVM. The xmx flag specifies the maximum memory available to the JVM.",
   "loc.input.label.sqAnalysisEnabled": "Run SonarQube or SonarCloud Analysis",
@@ -93,5 +93,7 @@
   "loc.messages.InvalidBuildFile": "Invalid or unsupported build file",
   "loc.messages.FileNotFound": "File or folder doesn't exist: %s",
   "loc.messages.FailedToAppendCC": "Unable to append code coverage data: %s",
-  "loc.messages.NoTestResults": "No test result files matching %s were found, so publishing JUnit test results is being skipped."
+  "loc.messages.NoTestResults": "No test result files matching %s were found, so publishing JUnit test results is being skipped.",
+  "loc.messages.chmodGradlew": "Used 'chmod' method for gradlew file to make it executable.",
+  "loc.messages.UnableToExtractGradleVersion": "Unable to extract Gradle version from gradle output."
 }

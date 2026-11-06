@@ -11,11 +11,14 @@
     "Build",
     "Release"
   ],
+  "deprecated": true,
+  "retiredDate": "2026-11-24",
+  "deprecationMessage": "The PyPI Publisher task has been deprecated. You can now publish PyPI packages using Twine authentication and custom scripts.",
   "demands": [],
   "version": {
     "Major": 0,
-    "Minor": 167,
-    "Patch": 2
+    "Minor": 283,
+    "Patch": 0
   },
   "minimumAgentVersion": "2.0.0",
   "instanceNameFormat": "ms-resource:loc.instanceNameFormat",
@@ -53,7 +56,15 @@
     }
   ],
   "execution": {
-    "Node": {
+    "Node10": {
+      "target": "publisher.js",
+      "argumentFormat": ""
+    },
+    "Node16": {
+      "target": "publisher.js",
+      "argumentFormat": ""
+    },
+    "Node20_1": {
       "target": "publisher.js",
       "argumentFormat": ""
     }

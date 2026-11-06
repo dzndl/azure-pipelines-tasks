@@ -5,10 +5,10 @@ import path = require('path');
 import { DeploymentType, TaskParameters } from './TaskParameters';
 
 import { AzureDeployPackageArtifactAlias } from './Constants';
-import { KUDU_DEPLOYMENT_CONSTANTS } from 'azure-pipelines-tasks-azure-arm-rest-v2/constants';
-import { Kudu } from 'azure-pipelines-tasks-azure-arm-rest-v2/azure-arm-app-service-kudu';
+import { KUDU_DEPLOYMENT_CONSTANTS } from 'azure-pipelines-tasks-azure-arm-rest/constants';
+import { Kudu, sanitizeKuduLogForConsole } from 'azure-pipelines-tasks-azure-arm-rest/azure-arm-app-service-kudu';
 
-import webClient = require('azure-pipelines-tasks-azure-arm-rest-v2/webClient');
+import webClient = require('azure-pipelines-tasks-azure-arm-rest/webClient');
 
 var deployUtility = require('azure-pipelines-tasks-webdeployment-common/utility.js');
 var zipUtility = require('azure-pipelines-tasks-webdeployment-common/ziputility.js');
@@ -48,7 +48,7 @@ export class KuduServiceUtility {
         let vstsPostDeploymentFolderPath: string = path.join(physicalRootPath.substring(1), '..', 'VSTS_PostDeployment_' + uniqueID);
         try {      
             var rootDirectoryPath = directoryPath || physicalRootPath.substring(1);
-
+          
             if(taskParams.TakeAppOfflineFlag) {
                 await this._appOfflineKuduService(rootDirectoryPath, true);
             }
@@ -123,6 +123,7 @@ export class KuduServiceUtility {
     
         var buildOrReleaseUrl = "" ;
         var deploymentID: string = (releaseId ? releaseId : buildId) + Date.now().toString();
+       
         return deploymentID;
     }
 
@@ -149,7 +150,12 @@ export class KuduServiceUtility {
                 await this._appOfflineKuduService(physicalPath, false);
             }
 
-            console.log(tl.loc("Successfullydeployedpackageusingkuduserviceat", packagePath, physicalPath));
+            tl.writeExternalOutput(tl.loc("Successfullydeployedpackageusingkuduserviceat", packagePath, physicalPath) + '\n', {
+                source: 'repository',
+                vsoCommandMode: tl.getPipelineFeature('DisableWebAppPackageDiagnosticVsoCommandBlocking')
+                    ? 'telemetryOnly'
+                    : 'blockAndTelemetry'
+            });
         }
         catch(error) {
             tl.error(tl.loc('PackageDeploymentFailed'));
@@ -160,7 +166,7 @@ export class KuduServiceUtility {
     public async deployUsingZipDeploy(packagePath: string, appOffline?: boolean, customMessage?: any): Promise<string> {
         try {
             console.log(tl.loc('PackageDeploymentInitiated'));
-
+           
             if(appOffline) {
                 await this._appOfflineKuduService(physicalRootPath, true);
                 tl.debug('Wait for 5 seconds for app_offline to take effect');
@@ -171,13 +177,17 @@ export class KuduServiceUtility {
                 'isAsync=true',
                 'deployer=' + VSTS_ZIP_DEPLOY
             ];
+           
+            var deploymentMessage = this._getUpdateHistoryRequest(true, null, customMessage).message;
+            queryParameters.push('message=' + encodeURIComponent(deploymentMessage));
 
             let deploymentDetails = await this._appServiceKuduService.zipDeploy(packagePath, queryParameters);
+           
             await this._processDeploymentResponse(deploymentDetails);
             if(appOffline) {
                 await this._appOfflineKuduService(physicalRootPath, false);
             }
-
+           
             console.log(tl.loc('PackageDeploymentSuccess'));
             return deploymentDetails.id;
         }
@@ -190,16 +200,18 @@ export class KuduServiceUtility {
     public async deployUsingRunFromZip(packagePath: string, customMessage?: any) : Promise<void> {
         try {
             console.log(tl.loc('PackageDeploymentInitiated'));
-
+           
             let queryParameters: Array<string> = [
                 'deployer=' +   VSTS_DEPLOY
             ];
-
-            var deploymentMessage = this._getUpdateHistoryRequest(null, null, customMessage).message;
+          
+            var deploymentMessage = this._getUpdateHistoryRequest(true, null, customMessage).message;
             queryParameters.push('message=' + encodeURIComponent(deploymentMessage));
             await this._appServiceKuduService.zipDeploy(packagePath, queryParameters);
+         
             console.log(tl.loc('PackageDeploymentSuccess'));
             console.log("NOTE: Run From Package makes wwwroot read-only, so you will receive an error when writing files to this directory.");
+            
         }
         catch(error) {
             tl.error(tl.loc('PackageDeploymentFailed'));
@@ -218,13 +230,14 @@ export class KuduServiceUtility {
             if(targetFolderName) {
                 queryParameters.push('name=' + encodeURIComponent(targetFolderName));
             }
-
-            var deploymentMessage = this._getUpdateHistoryRequest(null, null, customMessage).message;
+            
+            var deploymentMessage = this._getUpdateHistoryRequest(true, null, customMessage).message;
+          
             queryParameters.push('message=' + encodeURIComponent(deploymentMessage));
             let deploymentDetails = await this._appServiceKuduService.warDeploy(packagePath, queryParameters);
             await this._processDeploymentResponse(deploymentDetails);
             console.log(tl.loc('PackageDeploymentSuccess'));
-
+          
             return deploymentDetails.id;
         }
         catch(error) {
@@ -251,9 +264,11 @@ export class KuduServiceUtility {
 
     public async warmpUp() {
         try {
+           
             tl.debug('warming up Kudu Service');
             await this._appServiceKuduService.getAppSettings();
             tl.debug('warmed up Kudu Service');
+            
         }
         catch(error) {
             tl.debug('Failed to warm-up Kudu: ' + error.toString());
@@ -288,7 +303,8 @@ export class KuduServiceUtility {
 
         var deploymentLogs = await this._appServiceKuduService.getDeploymentLogs(log_url);
         for(var deploymentLog of deploymentLogs) {
-            console.log(`${deploymentLog.message}`);
+            console.log(sanitizeKuduLogForConsole(`${deploymentLog.message}`, 'AzureRmWebAppDeployment'));
+           
             if(deploymentLog.details_url) {
                 await this._printZipDeployLogs(deploymentLog.details_url);
             }
@@ -306,16 +322,17 @@ export class KuduServiceUtility {
 
         if(stdoutLog) {
             console.log(tl.loc('stdoutFromScript'));
-            console.log(stdoutLog);
+            console.log(sanitizeKuduLogForConsole(stdoutLog, 'AzureRmWebAppDeployment'));
         }
         if(stderrLog) {
             console.log(tl.loc('stderrFromScript'));
+            var sanitizedStderrLog = sanitizeKuduLogForConsole(stderrLog, 'AzureRmWebAppDeployment');
             if(scriptReturnCode != '0') {
-                tl.error(stderrLog);
-                throw Error(tl.loc('ScriptExecutionOnKuduFailed', scriptReturnCode, stderrLog));
+                tl.error(sanitizedStderrLog);
+                throw Error(tl.loc('ScriptExecutionOnKuduFailed', scriptReturnCode, sanitizedStderrLog));
             }
             else {
-                console.log(stderrLog);
+                console.log(sanitizedStderrLog);
             }
         }
     }
@@ -443,7 +460,7 @@ export class KuduServiceUtility {
             // Task is running in release determine build information of selected artifact using artifactAlias
             author = tl.getVariable('release.requestedfor') || tl.getVariable('agent.name');
             tl.debug(`Artifact Source Alias is: ${artifactAlias}`);
-
+           
             commitId = tl.getVariable(`release.artifacts.${artifactAlias}.sourceVersion`);
             repoProvider = tl.getVariable(`release.artifacts.${artifactAlias}.repository.provider`);
             repoName = tl.getVariable(`release.artifacts.${artifactAlias}.repository.name`);
@@ -479,7 +496,7 @@ export class KuduServiceUtility {
         }
    
         deploymentID = !!deploymentID ? deploymentID : this.getDeploymentID();
-    
+       
         var message = {
             type : "deployment",
             commitId : commitId,
@@ -496,7 +513,7 @@ export class KuduServiceUtility {
             branch: branch,
             teamProjectName: tl.getVariable("system.teamproject")
         };
-
+       
         if(!!customMessage) {
             // Append Custom Messages to original message
             for(var attribute in customMessage) {

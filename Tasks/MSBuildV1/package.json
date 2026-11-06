@@ -1,6 +1,10 @@
 {
   "name": "vsts-tasks-msbuild",
   "description": "Azure Pipelines MSBuild Task",
+  "scripts": {
+    "build": "node ../../make.js build --task MSBuildV1",
+    "serverBuild": "node ../../make.js serverBuild --task MSBuildV1"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Microsoft/azure-pipelines-tasks.git"
@@ -12,12 +16,12 @@
   },
   "homepage": "https://github.com/Microsoft/azure-pipelines-tasks#readme",
   "dependencies": {
-    "@types/mocha": "^5.2.7",
-    "@types/node": "^10.17.0",
-    "azure-pipelines-task-lib": "^3.1.2",
-    "msbuildhelpers": "file:../../_build/Tasks/Common/msbuildhelpers-1.192.1.tgz"
+    "@types/mocha": "^9.1.1",
+    "@types/node": "^24.10.0",
+    "azure-pipelines-task-lib": "^5.280.3",
+    "azure-pipelines-tasks-msbuildhelpers": "^3.281.0"
   },
   "devDependencies": {
-    "typescript": "4.0.2"
+    "typescript": "^5.7.2"
   }
 }

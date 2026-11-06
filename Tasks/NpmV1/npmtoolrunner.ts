@@ -1,15 +1,22 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { format, parse, Url } from 'url';
 import * as Q from 'q';
 
-import * as tl from 'azure-pipelines-task-lib/task';
+import * as tlModule from 'azure-pipelines-task-lib/task';
 import * as tr from 'azure-pipelines-task-lib/toolrunner';
 import {NpmTaskInput} from './constants';
 
 import * as util from 'azure-pipelines-tasks-packaging-common/util';
 import * as npmutil from 'azure-pipelines-tasks-packaging-common/npm/npmutil';
 import * as telemetry from 'azure-pipelines-tasks-utility-common/telemetry';
+
+let tl: typeof tlModule = tlModule;
+
+export function __setTaskLibForTesting(taskLib: typeof tlModule): void {
+    tl = taskLib;
+}
 
 export class NpmToolRunner extends tr.ToolRunner {
     private cacheLocation: string;
@@ -96,12 +103,13 @@ export class NpmToolRunner extends tr.ToolRunner {
         return undefined;
     }
 
-    private _prepareNpmEnvironment(options?: tr.IExecSyncOptions): tr.IExecSyncOptions {
+    public _prepareNpmEnvironment(options?: tr.IExecSyncOptions): tr.IExecSyncOptions {
         options = options || <tr.IExecSyncOptions>{};
         options.cwd = this.workingDirectory;
+        options.env = { ...(options.env || process.env) };
 
-        if (options.env === undefined) {
-            options.env = process.env;
+        if (options.externalOutput === undefined) {
+            options.externalOutput = { source: 'childProcess' };
         }
 
         if (this.dbg || tl.getBoolInput(NpmTaskInput.Verbose, false)) {
@@ -204,7 +212,7 @@ export class NpmToolRunner extends tr.ToolRunner {
         const logs = tl.findMatch(path.join(this.cacheLocation, '_logs'), '*-debug.log');
         if (logs && logs.length > 0) {
             const debugLog = logs[logs.length - 1];
-            console.log(tl.loc('FoundNpmDebugLog', debugLog));
+            tl.writeExternalOutput(tl.loc('FoundNpmDebugLog', debugLog) + os.EOL, { source: 'childProcess' });
             return debugLog;
         }
 
@@ -213,7 +221,7 @@ export class NpmToolRunner extends tr.ToolRunner {
         const debugLog = path.join(cwd, 'npm-debug.log');
         tl.debug(tl.loc('TestDebugLog', debugLog));
         if (tl.exist(debugLog)) {
-            console.log(tl.loc('FoundNpmDebugLog', debugLog));
+            tl.writeExternalOutput(tl.loc('FoundNpmDebugLog', debugLog) + os.EOL, { source: 'childProcess' });
             return debugLog;
         }
 
@@ -227,7 +235,7 @@ export class NpmToolRunner extends tr.ToolRunner {
         }
 
         return Q.nfcall(fs.readFile, log, 'utf-8').then((data: string) => {
-            console.log(data);
+            tl.writeExternalOutput(data + os.EOL, { source: 'childProcess' });
         });
     }
 
@@ -236,7 +244,7 @@ export class NpmToolRunner extends tr.ToolRunner {
             return;
         }
 
-        console.log(fs.readFileSync(log, 'utf-8'));
+        tl.writeExternalOutput(fs.readFileSync(log, 'utf-8') + os.EOL, { source: 'childProcess' });
     }
 
     private _saveProjectNpmrc(): void {

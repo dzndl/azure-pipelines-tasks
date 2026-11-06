@@ -64,15 +64,17 @@ export let OperatingSystems = {
 export const testChartName = "testChartName";
 export const testChartPath = "test/testChartPath";
 export const testChartVersion = "1.1.1";
-export const testReleaseName = "testReleaseName";
-export const isHelmV3 = "__isHelmV3__";
+export const testReleaseName = "test-release-name";
+export const isHelmV3orHigher = "__isHelmV3orHigher__";
 export const testNamespace = "testNamespace";
 export const testDestinationPath = "testDestinationPath";
 export const testChartNameForACR = "testChartNameForACR";
 export const testChartPathForACR = "test/testChartPathForACR";
 export const testAzureResourceGroupForACR = "test-rg";
 export const testAzureSubscriptionEndpointForACR = "RMTest";
+export const testAzureSubscriptionEndpointAuthType = "SerivcePrincipal"
 export const testAzureContainerRegistry = "sonayak.azurecr.io";
+export const testEndpointAuthVar = "ENDPOINT_AUTH_SCHEME_" + testAzureSubscriptionEndpointForACR;
 
 /**
  * Formats the given path to be appropriate for the operating system.

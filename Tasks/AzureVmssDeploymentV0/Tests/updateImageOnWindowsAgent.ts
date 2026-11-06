@@ -5,7 +5,7 @@ import path = require('path');
 let taskPath = path.join(__dirname, '..', 'main.js');
 let tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(taskPath);
 
-tr.setInput("action", "Update image");
+tr.setInput("action", process.env['_protocolAction_'] || "Update image");
 tr.setInput("ConnectedServiceName", "AzureRM");
 tr.setInput("vmssName", process.env["noMatchingVmss"] === "true" ? "random-vmss" : (process.env["_vmssOsType_"] === "Linux" ? "testvmss2" : "testvmss1"));
 tr.setInput("vmssOsType", process.env["_vmssOsType_"] === "Linux" ? "Linux" : "Windows");
@@ -16,6 +16,26 @@ if (!(process.env["customScriptNotSpecified"] === "true")) {
     tr.setInput("customScriptArguments", "\"first 'arg'\" seco`nd$arg");
     tr.setInput("customScriptsStorageAccount", "teststorage1");
     tr.setInput("skipArchivingCustomScripts", process.env["_doNotArchive_"] === "true" ? "true" : "false");
+}
+
+if (process.env["_safeArgs_"] === "true") {
+    // backtick-escaped separator: the sanitizer trusts it, and the invoker must keep it verbatim (not doubled).
+    tr.setInput("customScriptArguments", "a`;b");
+}
+
+if (process.env["_crlfArgs_"] === "true") {
+    // LF is a PowerShell statement separator at the Invoke-Expression sink, so it must be rejected.
+    tr.setInput("customScriptArguments", "arg1\nWrite-Host pwned");
+}
+
+if (process.env["_crlfBacktick1_"] === "true") {
+    // Single backtick before LF: the allowlist lookbehind would exempt the newline; must still be rejected.
+    tr.setInput("customScriptArguments", "arg1`\nWrite-Host pwned");
+}
+
+if (process.env["_crlfBacktick2_"] === "true") {
+    // Two backticks before LF: first escapes the second, the LF still separates statements; must be rejected.
+    tr.setInput("customScriptArguments", "arg1``\nWrite-Host pwned");
 }
 
 process.env["AZURE_HTTP_USER_AGENT"] = "L0test";
@@ -57,9 +77,36 @@ Date.now = function (): number {
 }
 
 tr.registerMock('azure-pipelines-task-lib/toolrunner', require('azure-pipelines-task-lib/mock-toolrunner'));
-tr.registerMock('azure-pipelines-tasks-azure-arm-rest-v2/azure-arm-compute', require('./mock_node_modules/azure-arm-compute'));
-tr.registerMock('azure-pipelines-tasks-azure-arm-rest-v2/azure-arm-storage', require('./mock_node_modules/azure-arm-storage'));
-tr.registerMock('azp-tasks-az-blobstorage-provider-v2/blobservice', require('./mock_node_modules/blobservice'));
+tr.registerMock('azure-pipelines-tasks-azure-arm-rest/azure-arm-compute', require('./mock_node_modules/azure-arm-compute'));
+tr.registerMock('azure-pipelines-tasks-azure-arm-rest/azure-arm-storage', require('./mock_node_modules/azure-arm-storage'));
+tr.registerMock('azp-tasks-az-blobstorage-provider/blobservice', require('./mock_node_modules/blobservice'));
 tr.registerMock('azure-pipelines-tasks-utility-common/compressutility', require('./mock_node_modules/compressutility'));
+
+for (const flag of [
+    'DISTRIBUTEDTASK_TASKS_ENABLEVMSSCUSTOMSCRIPTARGSVALIDATION',
+    'DISTRIBUTEDTASK_TASKS_VMSSWINDOWSARGUMENTDATATRANSPORTFIXENABLED',
+    'AZP_75787_ENABLE_NEW_LOGIC', 'AZP_75787_ENABLE_NEW_LOGIC_LOG', 'AZP_75787_ENABLE_COLLECT'
+]) {
+    process.env[flag] = 'false';
+}
+if (process.env['_dataProtocolScripts_']) {
+    tr.setInput('customScriptsDirectory', process.env['_dataProtocolScripts_']);
+    tr.setInput('customScript', 'deploy.ps1');
+    tr.setInput('customScriptArguments', process.env['_dataProtocolArgs_'] || '');
+    tr.setInput('skipArchivingCustomScripts', 'true');
+    os.tmpdir = () => process.env['AGENT_TEMPDIRECTORY'];
+    process.env['DISTRIBUTEDTASK_TASKS_ENABLEVMSSCUSTOMSCRIPTARGSVALIDATION'] = process.env['_protocolOldFlag_'];
+    if (process.env['_protocolFixFlag_'] === 'missing') {
+        delete process.env['DISTRIBUTEDTASK_TASKS_VMSSWINDOWSARGUMENTDATATRANSPORTFIXENABLED'];
+    } else {
+        process.env['DISTRIBUTEDTASK_TASKS_VMSSWINDOWSARGUMENTDATATRANSPORTFIXENABLED'] = process.env['_protocolFixFlag_'];
+    }
+    process.env['AZP_75787_ENABLE_NEW_LOGIC'] = process.env['_protocolActivate_'];
+}
+
+if (process.env["_sanitizeArgsActivate_"] === "true") {
+    process.env["DISTRIBUTEDTASK_TASKS_ENABLEVMSSCUSTOMSCRIPTARGSVALIDATION"] = "true";
+    process.env["AZP_75787_ENABLE_NEW_LOGIC"] = "true";
+}
 
 tr.run();

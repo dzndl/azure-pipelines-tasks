@@ -5,7 +5,7 @@ var fs      = require('fs');
 import * as os from "os";
 import * as path from "path";
 import * as stream from "stream";
-var DecompressZip = require('decompress-zip');
+import * as extract from 'extract-zip'
 import * as tl from "azure-pipelines-task-lib/task";
 
 // copy source file to destination folder. destination folder will be created if it does not exists, otherwise its contents will be overwritten.
@@ -13,9 +13,9 @@ export function copyFile(sourceFile: string, destinationFolder: string): void {
     tl.checkPath(sourceFile, tl.loc("CopySourceNotExists", sourceFile));
 
     if(!tl.exist(destinationFolder)) {
-        console.log(tl.loc("CreatingDestinationDir", destinationFolder));
+        tl.writeExternalOutput(tl.loc("CreatingDestinationDir", destinationFolder) + os.EOL, { source: "repository" });
         tl.mkdirP(destinationFolder);
-        console.log(tl.loc("CreatedDestinationDir", destinationFolder));
+        tl.writeExternalOutput(tl.loc("CreatedDestinationDir", destinationFolder) + os.EOL, { source: "repository" });
     }
 
     tl.cp(sourceFile, destinationFolder, "-f")
@@ -30,7 +30,7 @@ export async function download(url: string, downloadPath: string): Promise<void>
             res.on("error", err => reject(err));
             res.on("end", () => {
                 tl.debug("File download completed");
-                resolve();
+                resolve(null);
             });
         });
 
@@ -42,7 +42,9 @@ export async function download(url: string, downloadPath: string): Promise<void>
         req.end();
     });
 
-    file.end(null, null, file.close);
+    if (!file.writableEnded) {
+        file.end(null, null, file.close);
+    }
 }
 
 export async function unzip(zipLocation, unzipLocation): Promise<string> {
@@ -51,17 +53,11 @@ export async function unzip(zipLocation, unzipLocation): Promise<string> {
         if(tl.exist(unzipLocation)) {
             tl.rmRF(unzipLocation);
         }
-
-        var unzipper = new DecompressZip(zipLocation);
-        tl.debug('extracting ' + zipLocation + ' to ' + unzipLocation);
-        unzipper.on('error', err => reject(err));
-        unzipper.on('extract', log => {
-            tl.debug('extracted ' + zipLocation + ' to ' + unzipLocation + ' Successfully');
-            resolve(unzipLocation);
-        });
-
-        unzipper.extract({
-            path: unzipLocation
+        tl.debug(`Using extract-zip package for extracting archive`);
+        extract(zipLocation, { dir: unzipLocation }).then(() => {
+            resolve("true");
+        }).catch((error) => {
+            reject(error);
         });
     });
 
@@ -157,9 +153,7 @@ export function deleteDirectory(dir: string): void {
 
     if(tl.exist(dir)) {
         tl.debug("Cleaning-up directory " + dir);
-        try {
-            tl.rmRF(dir);
-        } catch(error) {}
+        tl.rmRF(dir);
     }
 }
 

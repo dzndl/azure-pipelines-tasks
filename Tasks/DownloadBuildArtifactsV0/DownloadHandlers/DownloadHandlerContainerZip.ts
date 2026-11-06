@@ -2,8 +2,10 @@ import { DownloadHandler } from './DownloadHandler';
 import { IContainerHandlerZipConfig } from './HandlerConfigs';
 import { FilesystemProvider, ZipProvider } from 'artifact-engine/Providers';
 import * as tl from 'azure-pipelines-task-lib/task';
+import * as os from 'os';
 import * as path from 'path';
 import * as DecompressZip from 'decompress-zip';
+import * as extract from 'extract-zip'
 
 /**
  * Handler for download artifact via build API
@@ -22,7 +24,7 @@ export class DownloadHandlerContainerZip extends DownloadHandler {
 
     constructor(handlerConfig: IContainerHandlerZipConfig) {
         super(handlerConfig);
-        this.archiveUrl = `${this.config.endpointUrl}/${this.config.projectId}/_apis/build/builds/${this.config.buildId}/artifacts?artifactName=${this.config.artifactInfo.name}&$format=zip`;
+        this.archiveUrl = `${this.config.endpointUrl}/${this.config.projectId}/_apis/build/builds/${this.config.buildId}/artifacts?artifactName=${encodeURIComponent(this.config.artifactInfo.name)}&$format=zip`;
         this.zipLocation = path.join(this.config.downloadPath, `${this.config.artifactInfo.name}.zip`);
     }
 
@@ -39,22 +41,12 @@ export class DownloadHandlerContainerZip extends DownloadHandler {
             }
 
             tl.debug(`Extracting ${this.zipLocation} to ${unzipLocation}`);
-
-            const unzipper = new DecompressZip(this.zipLocation);
-
-            unzipper.on('error', err => {
-                return reject(tl.loc('ExtractionFailed', err));
+            tl.debug(`Using extract-zip package for extracting archive`);
+            extract(this.zipLocation, { dir: unzipLocation }).then(() => {
+                resolve();
+            }).catch((error) => {
+                reject(error);
             });
-
-            unzipper.on('extract', log => {
-                tl.debug(`Extracted ${this.zipLocation} to ${unzipLocation} successfully`);
-                return resolve();
-            });
-
-            unzipper.extract({
-                path: unzipLocation
-            });
-
         });
 
         return unZipPromise;
@@ -67,7 +59,7 @@ export class DownloadHandlerContainerZip extends DownloadHandler {
      * @returns {ZipProvider} Configured Zip Provider
     */
     protected getSourceProvider(): ZipProvider {
-        console.log(tl.loc('DownloadArtifacts', this.config.artifactInfo.name, this.archiveUrl));
+        tl.writeExternalOutput(tl.loc('DownloadArtifacts', this.config.artifactInfo.name, this.archiveUrl) + os.EOL, { source: 'remote' });
         const provider: ZipProvider = new ZipProvider(this.archiveUrl, this.config.handler);
         return provider;
     }
@@ -105,8 +97,7 @@ export class DownloadHandlerContainerZip extends DownloadHandler {
                         tl.rmRF(this.zipLocation);
                     }
 
-                    resolve();
-
+                    resolve(undefined);
                 }).catch((error) => {
                     reject(error);
                 });

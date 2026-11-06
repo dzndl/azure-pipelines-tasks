@@ -2,22 +2,26 @@
   "name": "github.release",
   "version": "0.0.0",
   "main": "main.js",
+  "scripts": {
+    "build": "node ../../make.js build --task GitHubReleaseV1",
+    "serverBuild": "node ../../make.js serverBuild --task GitHubReleaseV1"
+  },
   "dependencies": {
     "@types/mocha": "^5.2.7",
-    "@types/node": "^10.17.0",
+    "@types/node": "^24.10.0",
     "@types/q": "1.5.0",
     "@types/uuid": "^8.3.0",
-    "azure-pipelines-task-lib": "^3.0.6-preview.0",
-    "brace-expansion": "1.1.8",
+    "azure-pipelines-task-lib": "^5.281.2",
+    "azure-pipelines-tasks-utility-common": "^3.281.0",
+    "brace-expansion": "^1.1.21",
     "browserify-mime": "1.2.9",
     "glob": "7.1.2",
     "q": "1.4.1",
-    "semver": "5.4.1",
-    "typed-rest-client": "1.7.3",
-    "utility-common-v2": "file:../../_build/Tasks/Common/utility-common-v2-2.0.0.tgz",
+    "semver": "^7.6.3",
+    "typed-rest-client": "^3.1.2",
     "vso-node-api": "6.0.1-preview"
   },
   "devDependencies": {
-    "typescript": "4.0.2"
+    "typescript": "^5.7.2"
   }
 }

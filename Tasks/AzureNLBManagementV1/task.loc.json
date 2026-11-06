@@ -16,11 +16,14 @@
   ],
   "version": {
     "Major": 1,
-    "Minor": 184,
-    "Patch": 1
+    "Minor": 283,
+    "Patch": 0
   },
   "minimumAgentVersion": "1.95.0",
   "instanceNameFormat": "ms-resource:loc.instanceNameFormat",
+  "deprecated": true,
+  "retiredDate": "2026-11-24",
+  "deprecationMessage": "The AzureNLBManagement@01 task is deprecated",
   "inputs": [
     {
       "name": "ConnectedServiceName",
@@ -84,6 +87,14 @@
   "execution": {
     "Node10": {
       "target": "nlbtask.js"
+    },
+    "Node16": {
+      "target": "nlbtask.js",
+      "argumentFormat": ""
+    },
+    "Node20_1": {
+      "target": "nlbtask.js",
+      "argumentFormat": ""
     }
   },
   "messages": {

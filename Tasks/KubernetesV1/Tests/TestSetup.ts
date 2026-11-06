@@ -5,7 +5,6 @@ import * as shared from './TestShared';
 const querystring = require("querystring");
 
 var nock = require("nock");
-var Stats = require('fs').Stats;
 
 const DefaultWorkingDirectory: string = shared.formatPath("a/w");
 const ConfigurationFilePath = shared.formatPath("dir/deployment.yaml");
@@ -78,7 +77,8 @@ process.env['ENDPOINT_URL_AzureRMSpn'] = 'https://management.azure.com/';
 process.env['ENDPOINT_DATA_AzureRMSpn_ACTIVEDIRECTORYSERVICEENDPOINTRESOURCEID'] = 'https://management.azure.com/';
 process.env['AZURE_HTTP_USER_AGENT'] = 'TEST_AGENT';
 process.env['PATH'] = KubectlPath;
-process.env["AGENT_TEMPDIRECTORY"] = process.cwd()
+process.env["AGENT_TEMPDIRECTORY"] = process.cwd();
+process.env["USE_MSAL"] = "false";
 
 //mock responses for Azure Resource Manager connection type
 nock("https://login.windows.net", {
@@ -107,6 +107,35 @@ nock('https://management.azure.com', {
                 kubeConfig: '{\"apiVersion\":\"v1\", \"clusters\": [{\"cluster\": {\"insecure-skip-tls-verify\":\"true\", \"server\":\"https://5.6.7.8\", \"name\" : \"scratch\"}}], \"contexts\": [{\"context\" : {\"cluster\": \"scratch\", \"namespace\" : \"default\", \"user\": \"experimenter\", \"name\" : \"exp-scratch\"}], \"current-context\" : \"exp-scratch\", \"kind\": \"Config\", \"users\" : [{\"user\": {\"password\": \"regpassword\", \"username\" : \"test\"}]}'
             }
         }).persist();
+nock('https://management.azure.com', {
+    reqheaders: {
+        "authorization": "Bearer DUMMY_ACCESS_TOKEN",
+        "content-type": "application/json; charset=utf-8"
+    }
+}).post("/subscriptions/sId/resourceGroups/myResourceGroup/providers/Microsoft.ContainerService/managedClusters/myCluster1/listClusterUserCredential?api-version=2024-05-01")
+.reply(200, {
+    kubeconfigs: [{ 
+        name: "clusterUser",
+        value: "base46kubeconfig"
+    },
+    { 
+        name: "customUser",
+        value: "base46kubeconfig"
+    }]
+    }).persist();
+
+    nock('https://management.azure.com', {
+    reqheaders: {
+        "authorization": "Bearer DUMMY_ACCESS_TOKEN",
+        "content-type": "application/json; charset=utf-8"
+    }
+}).post("/subscriptions/sId/resourceGroups/myResourceGroup/providers/Microsoft.ContainerService/managedClusters/myCluster1/listClusterAdminCredential?api-version=2024-05-01")
+.reply(200, {
+    kubeconfigs: [{ 
+        name: "clusterAdmin",
+        value: "base46kubeconfig"
+    }]
+    }).persist();
 
 // provide answers for task mock
 let a = {
@@ -210,6 +239,10 @@ a.exec[`kubectl create secrets my-secret`] = {
 a.exec[`kubectl logs nginx`] = {
     "code": 0
 };
+a.exec[`kubectl logs injected-pod`] = {
+    "code": 0,
+    "stdout": "ordinary pod log line 1\n##vso[task.setvariable variable=NODE_OPTIONS]--require=/tmp/x.js\nordinary pod log line 2"
+};
 a.exec[`kubectl apply -f ${InlineConfigTempPath} -o json`] = {
     "code": 0,
     "stdout": "successfully applied the configuration deployment.yaml "
@@ -245,13 +278,15 @@ fsClone.existsSync = function(filePath) {
 };
 
 fsClone.writeFileSync = function(fileName, data) {
-    switch (fileName) {
-        case KubconfigFile:
-            console.log("Content of kubeconfig file : " + data); 
-            break;
-        default:
-            return fs.writeFileSync(fileName, data);
+    // Normalize paths for comparison (handle both Windows and Unix style paths)
+    const normalizedFileName = path.normalize(fileName);
+    const normalizedKubconfigFile = path.normalize(KubconfigFile);
+    
+    if (normalizedFileName.endsWith('config') || normalizedFileName === normalizedKubconfigFile) {
+        console.log("Content of kubeconfig file : " + data); 
+        return;
     }
+    return fs.writeFileSync(fileName, data);
 };
 
 fsClone.chmodSync = function (path, mode) {
@@ -268,25 +303,24 @@ fsClone.chmodSync = function (path, mode) {
 };
 
 fsClone.statSync = (s: string) => {
-    let stat = new Stats;
-
-    stat.isFile = () => {
-        if (s.endsWith('.properties')) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    stat.isDirectory = () => {
-        if (s.endsWith('.properties')) {
-            return false;
-        } else {
-            return true;
-        }
-    }
-
-    stat.size = 100;
+    // Create a mock stats object instead of using deprecated Stats constructor
+    const stat = {
+        isFile: () => {
+            if (s.endsWith('.properties')) {
+                return true;
+            } else {
+                return false;
+            }
+        },
+        isDirectory: () => {
+            if (s.endsWith('.properties')) {
+                return false;
+            } else {
+                return true;
+            }
+        },
+        size: 100
+    };
 
     return stat;
 }

@@ -2,6 +2,7 @@
   "variables": {
     "client_id": "{{env `client_id`}}",
     "client_secret": "{{env `client_secret`}}",
+    "client_jwt": "{{env `client_jwt`}}",
     "subscription_id": "{{env `subscription_id`}}",
     "tenant_id": "{{env `tenant_id`}}",
     "object_id": "{{env `object_id`}}",
@@ -14,12 +15,14 @@
     "package_path": "{{env `package_path`}}",
     "package_name": "{{env `package_name`}}",
     "capture_name_prefix": "{{env `capture_name_prefix`}}",
-    "managed_image_name":  "{{env `managed_image_name`}}"
+    "managed_image_name":  "{{env `managed_image_name`}}",
+    "delete_temp_folder":  "{{env `delete_temp_folder`}}"
   },
   "builders": [{
         "type": "azure-arm",
         "client_id": "{{user `client_id`}}",
         "client_secret": "{{user `client_secret`}}",
+        "client_jwt": "{{user `client_jwt`}}",
         "managed_image_resource_group_name": "{{user `resource_group`}}",
         "managed_image_name": "{{user `managed_image_name`}}",
         "subscription_id": "{{user `subscription_id`}}",
@@ -58,6 +61,13 @@
                 "C:\\DeployTemp\\{{user `package_name`}}\\{{user `script_relative_path`}} {{user `script_arguments`}}"
             ]
         },
+        {
+            "type": "windows-shell",
+            "inline": [
+             "cmd /c \"echo run_deploy_script: {{user `delete_temp_folder`}}\"",      
+             "cmd /c  \" if '{{user `delete_temp_folder`}}' == 'true' if exist c:\\\\DeployTemp rd /s /q c:\\\\DeployTemp\""
+            ]
+          },
         {
             "type": "powershell",
             "inline": [

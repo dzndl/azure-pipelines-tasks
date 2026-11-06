@@ -14,7 +14,7 @@
   "author": "Microsoft Corporation",
   "version": {
     "Major": 1,
-    "Minor": 183,
+    "Minor": 282,
     "Patch": 0
   },
   "demands": [],
@@ -218,6 +218,15 @@
       "groupName": "DeploymentInputs"
     },
     {
+      "name": "canDeleteTempFolder",
+      "type": "boolean",
+      "label": "ms-resource:loc.input.label.canDeleteTempFolder",
+      "required": true,
+      "helpMarkDown": "ms-resource:loc.input.help.canDeleteTempFolder",
+      "defaultValue": false,
+      "groupName": "DeploymentInputs"
+    },
+    {
       "name": "additionalBuilderParameters",
       "type": "multiLine",
       "label": "ms-resource:loc.input.label.additionalBuilderParameters",
@@ -296,8 +305,20 @@
   "sourceDefinitions": [],
   "instanceNameFormat": "ms-resource:loc.instanceNameFormat",
   "execution": {
+    "Node16": {
+      "target": "./src//main.js",
+      "argumentFormat": ""
+    },
     "Node10": {
       "target": "./src//main.js"
+    },
+    "Node20_1": {
+      "target": "./src//main.js",
+      "argumentFormat": ""
+    },
+    "Node24": {
+      "target": "./src//main.js",
+      "argumentFormat": ""
     }
   },
   "messages": {
@@ -334,6 +355,7 @@
     "ExtractingPackerCompleted": "ms-resource:loc.messages.ExtractingPackerCompleted",
     "CreatedStagingDirectory": "ms-resource:loc.messages.CreatedStagingDirectory",
     "CouldNotDeleteStagingDirectory": "ms-resource:loc.messages.CouldNotDeleteStagingDirectory",
+    "CouldNotDeleteTempFile": "ms-resource:loc.messages.CouldNotDeleteTempFile",
     "InstalledPackerVersion": "ms-resource:loc.messages.InstalledPackerVersion",
     "PackerToolBusy": "ms-resource:loc.messages.PackerToolBusy",
     "ResolvingDeployPackageInput": "ms-resource:loc.messages.ResolvingDeployPackageInput",

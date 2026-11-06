@@ -4,6 +4,8 @@
   "description": "Use .Net Core",
   "main": "usedotnet.js",
   "scripts": {
+    "build": "node ../../make.js build --task UseDotNetV2",
+    "serverBuild": "node ../../make.js serverBuild --task UseDotNetV2",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -25,16 +27,17 @@
   "homepage": "https://github.com/Microsoft/azure-pipelines-tasks#readme",
   "dependencies": {
     "@types/mocha": "^5.2.6",
-    "@types/node": "^10.17.0",
+    "@types/node": "^24.10.0",
     "@types/semver": "6.0.0",
-    "azure-pipelines-task-lib": "^3.0.0-preview",
-    "azure-pipelines-tasks-packaging-common": "2.0.0-preview.0",
-    "azure-pipelines-tasks-utility-common": "3.0.0-preview.0",
-    "azure-pipelines-tool-lib": "^1.0.1",
-    "semver": "6.3.0",
-    "typed-rest-client": "1.8.0"
+    "azure-pipelines-task-lib": "^5.280.3",
+    "azure-pipelines-tasks-packaging-common": "^3.281.0",
+    "azure-pipelines-tasks-utility-common": "^3.281.0",
+    "azure-pipelines-tool-lib": "^2.281.0",
+    "json5": "^2.2.3",
+    "semver": "^7.6.3",
+    "typed-rest-client": "^3.1.2"
   },
   "devDependencies": {
-    "typescript": "4.0.2"
+    "typescript": "^5.7.2"
   }
 }

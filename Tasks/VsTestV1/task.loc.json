@@ -17,8 +17,8 @@
   "author": "Microsoft Corporation",
   "version": {
     "Major": 1,
-    "Minor": 0,
-    "Patch": 98
+    "Minor": 279,
+    "Patch": 0
   },
   "demands": [
     "vstest"
@@ -41,6 +41,8 @@
       "isExpanded": false
     }
   ],
+  "deprecated": true,
+  "deprecationMessage": "The VSTest@1 task is deprecated, please use the latest version of the VSTest task",
   "inputs": [
     {
       "name": "testAssembly",

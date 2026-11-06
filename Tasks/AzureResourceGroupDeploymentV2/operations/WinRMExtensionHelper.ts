@@ -1,12 +1,12 @@
-import networkManagementClient = require("azure-pipelines-tasks-azure-arm-rest-v2/azure-arm-network");
-import computeManagementClient = require("azure-pipelines-tasks-azure-arm-rest-v2/azure-arm-compute");
+import networkManagementClient = require("azure-pipelines-tasks-azure-arm-rest/azure-arm-network");
+import computeManagementClient = require("azure-pipelines-tasks-azure-arm-rest/azure-arm-compute");
 import util = require("util");
 import tl = require("azure-pipelines-task-lib/task");
 import azure_utils = require("./AzureUtil");
 import deployAzureRG = require("../models/DeployAzureRG");
-import az = require("azure-pipelines-tasks-azure-arm-rest-v2/azureModels");
+import az = require("azure-pipelines-tasks-azure-arm-rest/azureModels");
 import utils = require("./Utils");
-import webRequestUtility = require("azure-pipelines-tasks-azure-arm-rest-v2/webRequestUtility");
+import webRequestUtility = require("azure-pipelines-tasks-azure-arm-rest/webRequestUtility");
 
 export class WinRMExtensionHelper {
     private taskParameters: deployAzureRG.AzureRGTaskParameters;
@@ -439,7 +439,7 @@ export class WinRMExtensionHelper {
                 tl.debug("Provisioning of CustomScriptExtension on vm " + vmName + " is in Succeeded State");
                 this.customScriptExtensionInstalled = true;
                 console.log(tl.loc("AddedExtension", vmName));
-                resolve();
+                resolve(null);
             });
         });
     }
@@ -456,7 +456,7 @@ export class WinRMExtensionHelper {
                 }
 
                 tl.debug("Successfully removed the extension " + extensionName + " from the VM " + vmName);
-                resolve();
+                resolve(null);
             });
         });
     }

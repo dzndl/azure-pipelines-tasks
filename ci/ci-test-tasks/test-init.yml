@@ -1,0 +1,17 @@
+steps:
+- script: |
+    npm install -g tfx-cli@0.14
+  displayName: 'Npm install -g tfx-cli'
+
+- script: |
+    tfx login --auth-type pat --service-url $(ADOUrl) --token $(ADOToken)
+  displayName: 'Tfx login'
+
+- task: NpmAuthenticate@0
+  inputs:
+    workingFile: ci/ci-test-tasks/.npmrc
+
+- script: |
+    cd ci/ci-test-tasks
+    npm ci --ignore-scripts
+  displayName: 'Npm ci (axios)'

@@ -226,7 +226,7 @@ export class DotNetCoreVersionFetcher {
             }
             else {
                 let scriptPath = path.join(this.getCurrentDir(), 'externals', 'get-os-distro.sh');
-                this.setFileAttribute(scriptPath, "777");
+                this.setFileAttribute(scriptPath, "755");
 
                 scriptRunner = tl.tool(tl.which(scriptPath, true));
             }
@@ -275,4 +275,4 @@ export class DotNetCoreVersionFetcher {
     private httpCallbackClient: httpClient.HttpClient;
 }
 
-const DotNetCoreReleasesIndexUrl: string = "https://raw.githubusercontent.com/dotnet/core/master/release-notes/releases-index.json";
+const DotNetCoreReleasesIndexUrl: string = "https://builds.dotnet.microsoft.com/dotnet/release-metadata/releases-index.json";

@@ -1,26 +1,24 @@
-import * as ParameterParser from 'azure-pipelines-tasks-azurermdeploycommon/operations/ParameterParserUtility'
-
-import { AzureAppService } from 'azure-pipelines-tasks-azurermdeploycommon/azure-arm-rest/azure-arm-app-service';
-import { AzureAppServiceUtility } from 'azure-pipelines-tasks-azurermdeploycommon/operations/AzureAppServiceUtility';
-import { AzureDeployPackageArtifactAlias } from 'azure-pipelines-tasks-azurermdeploycommon/Constants';
-import { AzureEndpoint } from 'azure-pipelines-tasks-azurermdeploycommon/azure-arm-rest/azureModels';
-import { AzureRmEndpointAuthenticationScheme } from 'azure-pipelines-tasks-azurermdeploycommon/azure-arm-rest/constants';
-import { IWebAppDeploymentProvider } from './IWebAppDeploymentProvider';
-import { Kudu } from 'azure-pipelines-tasks-azurermdeploycommon/azure-arm-rest/azure-arm-app-service-kudu';
-import { KuduServiceUtility } from 'azure-pipelines-tasks-azurermdeploycommon/operations/KuduServiceUtility';
-import { PackageUtility } from 'azure-pipelines-tasks-azurermdeploycommon/webdeployment-common/packageUtility';
-import { TaskParameters } from '../taskparameters';
-import { addReleaseAnnotation } from 'azure-pipelines-tasks-azurermdeploycommon/operations/ReleaseAnnotationUtility';
-
 import tl = require('azure-pipelines-task-lib/task');
-
 import publishProfileUtility = require("azure-pipelines-tasks-utility-common/publishProfileUtility");
+import { AzureAppService } from 'azure-pipelines-tasks-azure-arm-rest/azure-arm-app-service';
+import { Kudu } from 'azure-pipelines-tasks-azure-arm-rest/azure-arm-app-service-kudu';
+import { AzureEndpoint } from 'azure-pipelines-tasks-azure-arm-rest/azureModels';
+import { AzureAppServiceUtility } from 'azure-pipelines-tasks-azure-arm-rest/azureAppServiceUtility';
+import { AzureRmEndpointAuthenticationScheme, AzureDeployPackageArtifactAlias } from 'azure-pipelines-tasks-azure-arm-rest/constants';
+import { PackageUtility } from 'azure-pipelines-tasks-webdeployment-common/packageUtility';
+import * as ParameterParser from 'azure-pipelines-tasks-webdeployment-common/ParameterParserUtility'
+import { TaskParameters } from '../taskparameters';
+import { AzureAppServiceUtilityExt } from '../operations/AzureAppServiceUtilityExt';
+import { KuduServiceUtility } from '../operations/KuduServiceUtility';
+import { addReleaseAnnotation } from '../operations/ReleaseAnnotationUtility';
+import { IWebAppDeploymentProvider } from './IWebAppDeploymentProvider';
 
 export class AzureRmWebAppDeploymentProvider implements IWebAppDeploymentProvider {
     protected taskParams:TaskParameters;
     protected appService: AzureAppService;
     protected kuduService: Kudu;
     protected appServiceUtility: AzureAppServiceUtility;
+    protected appServiceUtilityExt: AzureAppServiceUtilityExt;
     protected kuduServiceUtility: KuduServiceUtility;
     protected virtualApplicationPath: string = "";
     protected activeDeploymentID;
@@ -37,19 +35,37 @@ export class AzureRmWebAppDeploymentProvider implements IWebAppDeploymentProvide
         if (this.taskParams.azureEndpoint.scheme && this.taskParams.azureEndpoint.scheme.toLowerCase() === AzureRmEndpointAuthenticationScheme.PublishProfile) {
             let publishProfileEndpoint: AzureEndpoint = this.taskParams.azureEndpoint;
             this.publishProfileScmCredentials = await publishProfileUtility.getSCMCredentialsFromPublishProfile(publishProfileEndpoint.PublishProfile);
-            this.kuduService = new Kudu(this.publishProfileScmCredentials.scmUri, this.publishProfileScmCredentials.username, this.publishProfileScmCredentials.password);
+            
+            const buffer =  new Buffer(this.publishProfileScmCredentials.username + ':' + this.publishProfileScmCredentials.password);
+            const auth = buffer.toString("base64");
+            var authHeader = "Basic " + auth;
+
+            tl.debug("Kudu: using basic authentication for publish profile");    
+            console.log('##vso[telemetry.publish area=TaskDeploymentMethod;feature=AzureAppServiceDeployment]{"authMethod":"Basic"}');
+            
+            this.kuduService = new Kudu(this.publishProfileScmCredentials.scmUri, authHeader);
             let resourceId = publishProfileEndpoint.resourceId;
             let resourceIdSplit = resourceId.split("/");
             this.slotName = resourceIdSplit.length === 11 ? resourceIdSplit[10] : "production";
         } else {
-            this.appService = new AzureAppService(this.taskParams.azureEndpoint, this.taskParams.ResourceGroupName, this.taskParams.WebAppName, 
+            this.appService = new AzureAppService(this.taskParams.azureEndpoint, this.taskParams.ResourceGroupName, this.taskParams.WebAppName,
                 this.taskParams.SlotName, this.taskParams.WebAppKind);
             this.appServiceUtility = new AzureAppServiceUtility(this.appService);
-            this.kuduService = await this.appServiceUtility.getKuduService();
+            this.appServiceUtilityExt = new AzureAppServiceUtilityExt(this.appService);
+            
+            const warmUpInstance = await this.getWarmupInstanceId();
+            if (warmUpInstance) {
+                tl.debug(`Using instance ${warmUpInstance} for warmup.`);
+            } else {
+                tl.debug('No specific instance for warmup, using default endpoint.');
+            }
+            
+            this.kuduService = await this.appServiceUtility.getKuduService(warmUpInstance);
             this.slotName = this.appService.getSlot();
         }
         this.kuduServiceUtility = new KuduServiceUtility(this.kuduService);
     }
+
 
     public async DeployWebAppStep() {}
 
@@ -58,7 +74,7 @@ export class AzureRmWebAppDeploymentProvider implements IWebAppDeploymentProvide
             await addReleaseAnnotation(this.taskParams.azureEndpoint, this.appService, isDeploymentSuccess);
         }
 
-        if(!!this.kuduServiceUtility) {                
+        if(!!this.kuduServiceUtility) {
             this.activeDeploymentID = await this.kuduServiceUtility.updateDeploymentStatus(isDeploymentSuccess, null, {'type': 'Deployment', slotName: this.slotName});
             tl.debug('Active DeploymentId :'+ this.activeDeploymentID);
         }
@@ -82,10 +98,25 @@ export class AzureRmWebAppDeploymentProvider implements IWebAppDeploymentProvide
 
             if(this.taskParams.ConfigurationSettings) {
                 var customConfigurationSettings = ParameterParser.parse(this.taskParams.ConfigurationSettings);
-                await this.appServiceUtility.updateConfigurationSettings(customConfigurationSettings);
+                await this.appService.updateConfigurationSettings(customConfigurationSettings);
             }
 
-            await this.appServiceUtility.updateScmTypeAndConfigurationDetails();
+            await this.appServiceUtilityExt.updateScmTypeAndConfigurationDetails();
         }
+    }
+
+    // Get the warmup instance id.
+    private async getWarmupInstanceId(): Promise<string | undefined> {
+        try {
+            const instances = await this.appServiceUtility.getAppserviceInstances();
+                if (instances?.value?.length > 0) {
+                // Sort by name and pick the first one.
+                const sortedInstances = instances.value.sort((a, b) => a.name.localeCompare(b.name));
+                return sortedInstances[0].name;
+            }
+        } catch (error) {
+            tl.debug(`Failed to get app service instances - ${error}`);
+        }
+        return undefined;
     }
 }

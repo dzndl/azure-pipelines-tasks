@@ -1,8 +1,8 @@
 {
-  "loc.friendlyName": "下载 Github Npm 包",
+  "loc.friendlyName": "[已弃用] 下载 Github Npm 包",
   "loc.helpMarkDown": "[详细了解此任务](https://go.microsoft.com/fwlink/?LinkID=613746)或[参阅 npm 文档](https://docs.npmjs.com/)",
-  "loc.description": "从 GitHub 安装 npm 包。",
-  "loc.instanceNameFormat": "下载 GitHub Npm 包",
+  "loc.description": "已弃用: 此任务不再维护。请结合 GitHub 服务连接改用 Npm@1 任务。",
+  "loc.instanceNameFormat": "[已弃用] 下载 Github Npm 包",
   "loc.group.displayName.customRegistries": "自定义注册表和身份验证",
   "loc.input.label.packageName": "包名称",
   "loc.input.help.packageName": "要从 github 下载的包的名称",
@@ -27,6 +27,8 @@
   "loc.messages.UseNpmrc": "正在使用 .npmrc 中的注册表",
   "loc.messages.PublishRegistry": "正在发布到注册表: %s",
   "loc.messages.UsingRegistry": "正在使用注册表: %s",
+  "loc.messages.Error_InvalidNpmPackageName": "Package name must be a valid scoped npm package name.",
+  "loc.messages.Error_InvalidNpmPackageVersion": "Package version must be a registry version, range, or tag.",
   "loc.messages.AddingAuthRegistry": "为注册表 %s 添加身份验证",
   "loc.messages.FoundLocalRegistries": "在此组织/集合中找到 %d 个注册表",
   "loc.messages.ForcePackagingUrl": "正在打包强制执行到后列对象的集合 URL: %s",
@@ -37,5 +39,5 @@
   "loc.messages.OverridingProjectNpmrc": "正在重写项目 .npmrc: %s",
   "loc.messages.RestoringProjectNpmrc": "正在还原项目 .npmrc",
   "loc.messages.WorkingDirectoryNotDirectory": "请将工作目录更改为有效目录",
-  "loc.messages.NGCommon_AreaNotFoundInSps": "Unable to locate the '%s' [%s] area. The service containing that area may not be available in your region."
+  "loc.messages.NGCommon_AreaNotFoundInSps": "无法定位“%s”[%s] 区域。你所在的地区可能无法使用包含该区域的服务。"
 }

@@ -1,6 +1,6 @@
 {
   "loc.friendlyName": "Implementación de conjuntos de escalado de máquinas virtuales de Azure",
-  "loc.helpMarkDown": "[Learn more about this task](https://go.microsoft.com/fwlink/?linkid=852117)",
+  "loc.helpMarkDown": "[Más información sobre esta tarea](https://docs.microsoft.com/azure/devops/pipelines/tasks/deploy/azure-vmss-deployment)",
   "loc.description": "Implementa una imagen de conjunto de escalado de máquinas virtuales.",
   "loc.instanceNameFormat": "VMSS $(vmssName) de Azure: $(action)",
   "loc.releaseNotes": "- Actualiza el conjunto de escalado de máquinas virtuales de Azure con una imagen de máquina personalizada.",
@@ -59,7 +59,7 @@
   "loc.messages.UploadingCustomScriptsBlobs": "Cargando scripts personalizados de %s en Azure Blobs.",
   "loc.messages.UploadingToStorageBlobsFailed": "No se pudieron cargar scripts personalizados en Azure Blob Storage. Error: %s.",
   "loc.messages.DestinationBlobContainer": "Los archivos se cargarán en la dirección URL de contenedor: %s.",
-  "loc.messages.StorageAccountDoesNotExist": "No se pudo obtener la cuenta de Azure Storage con el nombre %s.",
+  "loc.messages.StorageAccountDoesNotExist": "No se pudo obtener la cuenta de almacenamiento de Azure con el nombre %s.",
   "loc.messages.activeDirectoryResourceIdUrlCannotBeEmpty": "La dirección URL de recursos de Active Directory no puede estar vacía.",
   "loc.messages.StorageAccountCannotBeNull": "storage accountName no puede ser NULL o no estar definido, y debe ser de tipo cadena.",
   "loc.messages.ArtifactItemsTruncationWarning": "Es posible que la descarga se limite a 5000 elementos, por lo que quizá no se han descargado todos los elementos del artefacto.",
@@ -76,5 +76,10 @@
   "loc.messages.CouldNotFetchAccessTokenforAzureStatusCode": "No se pudo capturar el token de acceso para Azure. Código de estado: %s. Mensaje de estado: %s",
   "loc.messages.CouldNotFetchAccessTokenforMSIDueToMSINotConfiguredProperlyStatusCode": "No se pudo capturar el token de acceso para la entidad de servicio administrada. Configure Managed Service Identity (MSI) para la máquina virtual \"https://aka.ms/azure-msi-docs\". Código de estado: %s. Mensaje de estado: %s",
   "loc.messages.CouldNotFetchAccessTokenforMSIStatusCode": "No se pudo capturar el token de acceso para la entidad de servicio administrada. Código de estado: %s. Mensaje de estado: %s",
-  "loc.messages.ExpiredServicePrincipal": "No se pudo capturar el token de acceso de Azure. Compruebe que la entidad de servicio usada es válida y no ha expirado."
+  "loc.messages.ExpiredServicePrincipal": "No se pudo capturar el token de acceso de Azure. Compruebe que la entidad de servicio usada es válida y no ha expirado.",
+  "loc.messages.ScriptArgsSanitized": "Se detectaron caracteres en argumentos que el shell no puede ejecutar correctamente. Escape de los caracteres especiales mediante el acento grave ('). Puede encontrar más información aquí: https://aka.ms/ado/75787",
+  "loc.messages.ScriptArgsSanitizedBash": "Se detectaron caracteres en argumentos que el shell no puede ejecutar correctamente. Escape de caracteres especiales con barra diagonal inversa (\\). Puede obtener más información aquí: https://aka.ms/ado/75787",
+  "loc.messages.InvalidWindowsCustomScript": "Protected Windows invocation requires a relative .ps1 script inside the custom script directory.",
+  "loc.messages.WindowsScriptPayloadTooLarge": "The UTF-8 Windows custom script payload exceeds the 1 MiB limit.",
+  "loc.messages.WindowsScriptCleanupFailed": "Could not remove temporary Windows custom script files. Remove the task staging files before reusing the agent."
 }

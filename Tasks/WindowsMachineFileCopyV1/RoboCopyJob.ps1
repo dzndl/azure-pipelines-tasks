@@ -5,8 +5,16 @@ param (
     [string]$targetPath,
     [object]$credential,
     [string]$cleanTargetBeforeCopy,
-    [string]$additionalArguments
-    )    
+    $additionalArguments,
+    [string]$useSanitizerActivate,
+    [bool]$enableWindowsMachineFileCopyArgumentsHardening,
+    [string]$scriptRoot
+    )
+
+    # The parallel-copy path runs this scriptblock through Start-Job in a separate
+    # process, where the calling script's imports are not present. VstsTaskSdk is
+    # (re-)imported further below, after the legacy modules, to avoid a Get-TaskVariable
+    # name collision (see comment there).
 
     $sourcePath = $sourcePath.Trim().TrimEnd('\', '/')
     $targetPath = $targetPath.Trim().TrimEnd('\', '/')    
@@ -38,7 +46,16 @@ param (
     }
     
     import-module "Microsoft.TeamFoundation.DistributedTask.Task.Common"
-    
+
+    # Microsoft.TeamFoundation.DistributedTask.Task.Common also exports a cmdlet named
+    # Get-TaskVariable, which shadows VstsTaskSdk's own Get-TaskVariable function of the same
+    # name (used internally by Write-VstsTaskError/Write-VstsSetResult below). Re-import
+    # VstsTaskSdk (-Force) after the legacy module so its functions win the name collision.
+    if ($enableWindowsMachineFileCopyArgumentsHardening)
+    {
+        Import-Module "$scriptRoot\ps_modules\VstsTaskSdk" -Force -ArgumentList @{ NonInteractive = $true }
+    }
+
     function ThrowError
     {
         param(
@@ -118,10 +135,36 @@ param (
     }    
 
     function Get-RoboCopyParameters(
-        [string]$additionalArguments,
+        $additionalArguments,
         [switch]$fileCopy,
-        [switch]$clean)
+        [switch]$clean,
+        [switch]$AsArray)
     {
+        if ($AsArray.IsPresent)
+        {
+            $fixedFlags = @("/COPY:DAT")
+
+            if(-not $fileCopy.IsPresent)
+            {
+                if($clean.IsPresent)
+                {
+                    $fixedFlags += "/MIR"
+                }
+                else
+                {
+                    $fixedFlags += "/E"
+                }
+            }
+
+            $additionalArgumentArray = @($additionalArguments)
+            if ($additionalArgumentArray.Count -eq 1 -and [string]::IsNullOrWhiteSpace($additionalArgumentArray[0]))
+            {
+                $additionalArgumentArray = @()
+            }
+
+            return $fixedFlags + $additionalArgumentArray
+        }
+
         $robocopyParameters = "/COPY:DAT"
 
         if(-not $fileCopy.IsPresent)
@@ -213,11 +256,29 @@ param (
             }
         }
 
-        $robocopyParameters = Get-RoboCopyParameters -additionalArguments $additionalArguments -fileCopy:$isFileCopy -clean:$doCleanUp
-
-        $command = "robocopy `"$sourceDirectory`" `"$destinationNetworkPath`" `"$filesToCopy`" $robocopyParameters"                
-        Invoke-Expression $command        
+        if (-not $enableWindowsMachineFileCopyArgumentsHardening)
+        {
+            $robocopyParameters = Get-RoboCopyParameters -additionalArguments $additionalArguments -fileCopy:$isFileCopy -clean:$doCleanUp
+        }
         
+        if ($enableWindowsMachineFileCopyArgumentsHardening)
+        {
+            $robocopyExtraArguments = Get-RoboCopyParameters -additionalArguments $additionalArguments -fileCopy:$isFileCopy -clean:$doCleanUp -AsArray
+            $robocopyArguments = @($sourceDirectory, $destinationNetworkPath, $filesToCopy) + $robocopyExtraArguments
+            & robocopy @robocopyArguments
+        }
+        elseif ($useSanitizerActivate -eq "true")
+        {
+            # Splitting arguments on space, but not on space inside quotes
+            $sanitizedArguments = [regex]::Split($robocopyParameters, ' (?=(?:[^"]|"[^"]*")*$)')
+            & robocopy "$sourceDirectory" "$destinationNetworkPath" "$filesToCopy" $sanitizedArguments
+        }
+        else
+        {
+            $command = "robocopy `"$sourceDirectory`" `"$destinationNetworkPath`" `"$filesToCopy`" $robocopyParameters"
+            Invoke-Expression $command
+        }
+
         if ($LASTEXITCODE -ge 8)
         {
             $errorMessage = Get-LocalizedString -Key "Copying failed. Consult the robocopy logs for more details."            
@@ -228,6 +289,10 @@ param (
             $message = (Get-LocalizedString -Key "Copying recursively from {0} to {1} on machine {2} succeeded" -ArgumentList $sourcePath, $targetPath, $fqdn)
             Write-Output $message            
         }        
+    }
+    catch {
+        Write-VstsTaskError -Message $_.Exception.Message
+        Write-VstsSetResult -Result 'Failed' -Message "Error detected" -DoNotThrow
     }
     finally
     {

@@ -1,6 +1,15 @@
 {
+  "scripts": {
+    "build": "node ../../make.js build --task PublishCodeCoverageResultsV2",
+    "serverBuild": "node ../../make.js serverBuild --task PublishCodeCoverageResultsV2"
+  },
   "dependencies": {
-    "azure-pipelines-task-lib": "2.8.0",
-    "coveragepublisher": "file:../../_build/Tasks/Common/coveragepublisher-1.0.0.tgz"
+    "@types/mocha": "^5.2.7",
+    "@types/node": "^24.10.0",
+    "azure-pipelines-task-lib": "^5.281.1",
+    "coveragepublisher": "file:../../_build/Tasks/Common/coveragepublisher-1.1.3.tgz"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
   }
 }

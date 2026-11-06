@@ -52,7 +52,7 @@ The parameters of the task are described in details, including examples, to show
      - For Resource Group deployment scope: Location for deploying the resource group. If the resource group already exists in the subscription, then this value will be ignored.
     - For other deployment scopes: Location for storing the deployment metadata.
 
- * **Template location**: The location of the Template & the Parameters JSON files. Select "Linked Artifact" if the files are part of the linked code/build artifacts. Select "URL of the file" if the JSON files are located at any publicly accessible http/https URLs. To use a file stored in a private storage account, retrieve and include the shared access signature (SAS) token in the URL of the template. Example: <blob_storage_url>/template.json?<SAStoken>. To upload a parameters file to a storage account and generate a SAS token, you could use [Azure file copy task](https://aka.ms/azurefilecopyreadme) or follow the steps using [PowerShell](https://go.microsoft.com/fwlink/?linkid=838080) or [Azure CLI](https://go.microsoft.com/fwlink/?linkid=836911).
+ * **Template location**: The location of the Template & the Parameters JSON files. Select "Linked Artifact" if the files are part of the linked code/build artifacts. For "Linked Artifacts", you can also specify the path to a Bicep file.  Select "URL of the file" if the JSON files are located at any publicly accessible http/https URLs. To use a file stored in a private storage account, retrieve and include the shared access signature (SAS) token in the URL of the template. Example: <blob_storage_url>/template.json?<SAStoken>. To upload a parameters file to a storage account and generate a SAS token, you could use [Azure file copy task](https://aka.ms/azurefilecopyreadme) or follow the steps using [PowerShell](https://go.microsoft.com/fwlink/?linkid=838080) or [Azure CLI](https://go.microsoft.com/fwlink/?linkid=836911).
 
  * **Template and its Parameters**: The templates and the templates parameters file are the Azure templates available at [GitHub](https://github.com/Azure/azure-quickstart-templates) or in the [Azure gallery](https://azure.microsoft.com/en-in/documentation/articles/powershell-azure-resource-manager/). To get started immediately use [this](https://aka.ms/sampletemplate) template that is available on GitHub.
 	- These files can be either be located at any publicly accessible http/https URLs or be in a checked in the Version Control or they can be part of the build itself. If the files are part of the Build, use the pre-defined [system variables](https://msdn.microsoft.com/Library/vs/alm/Build/scripts/variables) provided by the Build to specify their location. The variables to use are $(Build.Repository.LocalPath), if the templates are checked-in but are not built, or $(Agent.BuildDirectory), if the templates are built as part of the solution. Be sure to specify the full path like $(Build.Repository.LocalPath)\Azure Templates\AzureRGDeploy.json. Wildcards like \*\*\\\*.json or \*\*\\*.param.json are also supported and there needs to be only one file that matches the search pattern at the location. If more than one file matches the search pattern, then the task will error out.
@@ -72,6 +72,10 @@ The parameters of the task are described in details, including examples, to show
 
  ### Deployment Outputs:
   Outputs created by Azure Resource Manager template deployment. It can be used in the subsequent tasks (like Powershell and Azure CLI) for further processing.
+
+  With `DistributedTask.Tasks.EnableSafeArmDeploymentOutputVariables` enabled, safe output handling requires agent 2.184.0 or newer with percent decoding enabled. With no overrides, supported agents enable decoding by default. `DECODE_PERCENTS` is interpreted without trimming: `true`, `1`, and `$true` (case-insensitive) enable decoding; surrounding whitespace and whitespace-only values disable it.
+
+  Incompatible configurations retain legacy output handling with a warning. This fallback does not provide the safe format's protection. The task does not change `DECODE_PERCENTS`. If agent-worker and task environments differ, the task cannot independently inspect the worker's effective setting; use an explicit nonempty job-level `DECODE_PERCENTS` value to avoid that ambiguity.
 
  **How to use Deployment output**
   The deployment output can be parsed to JSON object using "ConvertFrom-Json" Powershell cmdlet in Powershell/Azure Powershell task and then that object can be used in same task or subsequent tasks.
@@ -103,6 +107,33 @@ The parameters of the task are described in details, including examples, to show
   echo $sa_name
   ```
 
+  In case, you're accessing individual output values directly, values are being set after being converted via JSON.Stringify. To change this behavior, `Use individual output values without JSON.Stringify applied` checkbox can be used:
+
+  Example:
+  Let's assume, we've `outputvalue` as output of the deployment.
+
+  `Use individual output values without JSON.Stringify applied` set to `false (default)`
+  ```
+  outputvalue => JSON.stringify(outputvalue) => "outputvalue":
+
+  // setting variable as JSON.stringify's result
+  ##vso[task.setvariable variable=taskdeploymentoutputname.outputkey]"outputvalue"
+
+  // variable will be read as JSON.stringify's result
+  $(outputvalue) => "outputvalue"
+  ```
+
+  `Use individual output values without JSON.Stringify applied` set to `true`
+  ```
+  outputvalue => no operation:
+
+  // setting variable as it is
+  ##vso[task.setvariable variable=taskdeploymentoutputname.outputkey]outputvalue
+
+  // variable will be read as it is
+  $(outputvalue) => outputvalue
+  ```
+  
 ### Supported Azure and AzureRM module versions:
 |  Azure Pipelines/TFS Release  |  Recommended Azure Version  |  Other Supported Versions |
 |:------------------:|:---------------------------:|:-------------------------:|

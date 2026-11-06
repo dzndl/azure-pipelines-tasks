@@ -1,6 +1,6 @@
 {
   "loc.friendlyName": "Restaurar NuGet",
-  "loc.helpMarkDown": "[Learn more about this task](https://go.microsoft.com/fwlink/?LinkID=613747) or [see the NuGet documentation](https://docs.microsoft.com/nuget/)",
+  "loc.helpMarkDown": "[Obtener más información acerca de esta tarea](https://docs.microsoft.com/azure/devops/pipelines/tasks/package/nuget) o [consultar la documentación de NuGet](https://docs.microsoft.com/nuget/)",
   "loc.description": "Restaura los paquetes NuGet que se preparan para un paso de compilación de Visual Studio.",
   "loc.instanceNameFormat": "NuGet restore $(solution)",
   "loc.group.displayName.advanced": "Avanzado",
@@ -53,5 +53,8 @@
   "loc.messages.Error_NuGetToolInstallerFailer": "Error al instalar la herramienta: %s",
   "loc.messages.Warning_SessionCreationFailed": "No se pudo crear la sesión de proveniencia: %s",
   "loc.messages.Warning_UpdatingNuGetVersion": "Se está actualizando la versión de NuGet.exe a %s desde %s. Pueden producirse cambios de comportamiento o drásticos cuando NuGet se actualiza a una nueva versión. Si no desea que esto ocurra, desactive la opción \"Comprobar la última versión\" en la tarea.",
-  "loc.messages.UnsupportedProjectScopedFeeds": "Esta versión de la tarea \"Restaurar NuGet\" no admite las fuentes con ámbito de proyecto. Use la tarea \"NuGet\" de versión 2 o posterior."
+  "loc.messages.UnsupportedProjectScopedFeeds": "Esta versión de la tarea \"Restaurar NuGet\" no admite las fuentes con ámbito de proyecto. Use la tarea \"NuGet\" de versión 2 o posterior.",
+  "loc.messages.Warning_IncludeNuGetOrgEnabled": "IncludeNugetOrg está habilitado actualmente para esta tarea. Para resolver esta advertencia, edite la tarea de compilación y establezca \"includeNuGetOrg\" en \"false\" o anule la selección de \"Usar paquetes de NuGet.org\".",
+  "loc.messages.Error_IncludeNuGetOrgEnabled": "Error al restaurar los paquetes. Edite la tarea de compilación y establezca \"includeNuGetOrg\" en \"false\" o anule la selección de \"Usar paquetes de NuGet.org\".",
+  "loc.messages.DeprecatedTask": "Esta tarea está en desuso. Cambie al uso de la opción \"restaurar\" de NuGetCommand@2 https://learn.microsoft.com/en-us/azure/devops/pipelines/tasks/reference/nuget-command-v2"
 }

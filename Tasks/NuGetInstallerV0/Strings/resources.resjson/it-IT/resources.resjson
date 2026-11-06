@@ -1,7 +1,7 @@
 {
   "loc.friendlyName": "Programma di installazione NuGet",
-  "loc.helpMarkDown": "[Altre informazioni](https://go.microsoft.com/fwlink/?LinkID=613747)",
-  "loc.description": "Consente di installare o ripristinare i pacchetti NuGet mancanti",
+  "loc.helpMarkDown": "[Altre informazioni](https://docs.microsoft.com/azure/devops/pipelines/tasks/package/nuget)",
+  "loc.description": "Consente di installare o ripristinare i pacchetti NuGet mancanti. Per le funzionalità più recenti, usare l'attività NuGetAuthenticate@0.",
   "loc.instanceNameFormat": "NuGet $(restoreMode) $(solution)",
   "loc.group.displayName.advanced": "Avanzate",
   "loc.input.label.solution": "Percorso della soluzione o di packages.config",
@@ -42,5 +42,6 @@
   "loc.messages.NGCommon_RemovingSources": "Preparazione dell'impostazione delle credenziali in NuGet.config",
   "loc.messages.NGCommon_AddingSources": "Impostazione delle credenziali in NuGet.config",
   "loc.messages.NGCommon_NoSourcesFoundInConfig": "Non sono state trovate origini pacchetto nel file NuGet.config in %s",
-  "loc.messages.NGCommon_UnabletoDetectNuGetVersion": "È stata selezionata una versione di NuGet sconosciuta."
+  "loc.messages.NGCommon_UnabletoDetectNuGetVersion": "È stata selezionata una versione di NuGet sconosciuta.",
+  "loc.messages.DeprecatedTask": "Questa attività è deprecata. Passare all'opzione 'restore' o 'custom' di NuGetCommand@2 https://learn.microsoft.com/en-us/azure/devops/pipelines/tasks/reference/nuget-command-v2"
 }

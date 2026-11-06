@@ -1,12 +1,12 @@
-import ma = require('vsts-task-lib/mock-answer');
-import tmrm = require('vsts-task-lib/mock-run');
+import ma = require('azure-pipelines-task-lib/mock-answer');
+import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 import fs = require('fs');
 import azureBlobUploadHelper = require('../azure-blob-upload-helper');
 import { mockFs, mockAzure } from './UnitTests/TestHelpers';
 const Stats = require('fs').Stats;
 
-const mockery = require('mockery');
+const libMocker = require('azure-pipelines-task-lib/lib-mocker');
 const nock = require('nock');
 
 let taskPath = path.join(__dirname, '..', 'appcenterdistribute.js');
@@ -57,7 +57,7 @@ nock('https://example.test')
     .reply(200, {
     });
 
-mockFs();
+const mockedFs = {...fs, ...mockFs()};
 
 mockAzure();
 
@@ -76,25 +76,25 @@ tmr.setAnswers(a);
 
 let fsos = fs.openSync;
 
-fs.openSync = (path: string, flags: string) => {
+mockedFs.openSync = (path: string, flags: string) => {
     if (path.endsWith("test.zip")){
         return 1234567.89;
     }
     return fsos(path, flags);
 };
 
-fs.statSync = (s: string) => {
+mockedFs.statSync = (s: string) => {
     const stat = new Stats;
     stat.isFile = () => s.endsWith('.txt') || s.endsWith('.zip');
     stat.isDirectory = () => !s.endsWith('.txt') && !s.endsWith('.zip');
     stat.size = 100;
     return stat;
 }
-fs.lstatSync = fs.statSync;
+mockedFs.lstatSync = mockedFs.statSync;
 
 tmr.registerMock('azure-blob-upload-helper', azureBlobUploadHelper);
-tmr.registerMock('fs', fs);
+tmr.registerMock('fs', mockedFs);
 tmr.run();
 
-mockery.deregisterMock('fs', fs);
-mockery.deregisterMock('azure-blob-upload-helper', azureBlobUploadHelper);
+libMocker.deregisterMock('fs');
+libMocker.deregisterMock('azure-blob-upload-helper');

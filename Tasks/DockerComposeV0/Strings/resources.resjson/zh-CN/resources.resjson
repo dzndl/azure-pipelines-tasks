@@ -43,7 +43,7 @@
   "loc.input.label.entrypoint": "入口点替代",
   "loc.input.help.entrypoint": "替代特定服务容器的默认入口点。",
   "loc.input.label.containerCommand": "命令",
-  "loc.input.help.containerCommand": "要在特定服务容器中运行的命令。例如，如果映像包含一个简单的 Python Flask Web 应用程序，则可以将 \"python app.py\" 指定为启动 Web 应用程序。",
+  "loc.input.help.containerCommand": "要在特定服务容器中运行的命令。例如，如果映像包含一个简单的 Python Flask Web 应用程序，则可以将“python app.py”指定为启动 Web 应用程序。",
   "loc.input.label.detached": "后台运行",
   "loc.input.help.detached": "后台运行服务容器。",
   "loc.input.label.abortOnContainerExit": "容器退出时中止",
@@ -68,6 +68,8 @@
   "loc.input.help.requireAdditionalDockerComposeFiles": "不存在其他 Docker Compose 文件时发生错误。这会替代如果文件不存在则忽略该文件的默认行为。",
   "loc.input.label.cwd": "工作目录",
   "loc.input.help.cwd": "Docker Compose 命令的工作目录。",
+  "loc.input.label.dockerComposePath": "Docker Compose 可执行文件路径",
+  "loc.input.help.dockerComposePath": "如果提供了路径，则将使用此 docker-compose 可执行文件",
   "loc.messages.ConnectingToDockerHost": "已设置 DOCKER_HOST 变量。Docker 将尝试连接到 Docker 主机: %s",
   "loc.messages.ContainerPatternFound": "Docker Compose 文件路径参数中找到的模式",
   "loc.messages.ContainerPatternNotFound": "Docker Compose 文件路径参数中未找到任何模式",
@@ -78,5 +80,7 @@
   "loc.messages.NoDataWrittenOnFile": "没有任何数据写入到文件 %s",
   "loc.messages.FileContentSynced": "文件内容已同步到磁盘。内容为 %s。",
   "loc.messages.ImageNameWithoutTag": "未使用标记指定映像名，推送指定映像的所有标记。",
-  "loc.messages.WritingDockerConfigToTempFile": "正在将 Docker 配置写入临时文件。文件路径: %s，Docker 配置: %s"
+  "loc.messages.WritingDockerConfigToTempFile": "正在将 Docker 配置写入临时文件。文件路径: %s，Docker 配置: %s",
+  "loc.messages.InvalidProjectName": "项目名称“%s”必须是有效的 docker compose 项目名称。请访问以下链接了解更多详细信息: https://docs.docker.com/compose/project-name/#set-a-project-name",
+  "loc.messages.MigrateToDockerComposeV2": "该任务正在使用 Docker Compose V1，此服务的生命周期已结束，将于 7 月 24 日从 Microsoft 托管代理中删除。应更新在 Microsoft 托管代理上运行的管道，以实现 Docker Compose v2 兼容性，例如使用兼容的容器名称。有关必需更新的指南，请参阅官方 Docker Compose 文档(https://docs.docker.com/compose/migrate/)"
 }

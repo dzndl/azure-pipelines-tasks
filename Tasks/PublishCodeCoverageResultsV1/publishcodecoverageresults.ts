@@ -3,13 +3,14 @@ import * as tl from 'azure-pipelines-task-lib/task';
 import * as tr from 'azure-pipelines-task-lib/toolrunner';
 import * as ccUtil from 'azure-pipelines-tasks-codecoverage-tools/codecoverageutilities';
 import * as os from 'os';
+import * as ci from './cieventlogger';
 
 // Main entry point of this task.
 async function run() {
     try {
         // Initialize localization
         tl.setResourcePath(path.join(__dirname, 'task.json'));
-
+        
         // Get input values
         const codeCoverageTool = tl.getInput('codeCoverageTool', true);
         const summaryFileLocation = tl.getInput('summaryFileLocation', true);
@@ -21,7 +22,12 @@ async function run() {
 
         let autogenerateHtmlReport: boolean = true;
         let tempFolder = undefined;
-        const disableAutoGenerate = tl.getVariable('disable.coverage.autogenerate')
+
+        let disableCoverageAutoGenerate = tl.getVariable('disable.coverage.autogenerate');
+
+        ci.addToConsolidatedCi('disableCoverageAutoGenerate', disableCoverageAutoGenerate);
+
+        const disableAutoGenerate = disableCoverageAutoGenerate
             || (codeCoverageTool.toLowerCase() === 'jacoco' && isNullOrWhitespace(pathToSources));
 
         if (disableAutoGenerate) {
@@ -88,6 +94,8 @@ async function run() {
         }
     } catch (err) {
         tl.setResult(tl.TaskResult.Failed, err);
+    } finally {
+        ci.fireConsolidatedCi();
     }
 }
 

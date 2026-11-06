@@ -1,6 +1,6 @@
 {
   "loc.friendlyName": "Установщик среды выполнения/пакета SDK для .NET",
-  "loc.helpMarkDown": "[Learn more about this task](https://aka.ms/AA4ihfi)",
+  "loc.helpMarkDown": "[См. дополнительные сведения об этой задаче](https://aka.ms/AA4ihfi)",
   "loc.description": "Получение определенной версии пакета SDK для .NET Core из Интернета или локального кэша и добавление ее в PATH",
   "loc.instanceNameFormat": "Установить .NET Core $(packageType) $(version)",
   "loc.releaseNotes": "<li>Поддержка параллельной установки нескольких версий.</li><li>Поддержка шаблонов в версии для получения последнего дополнительного или основного номера версии.</li><li>Ограничение многоуровневого поиска.</li>",
@@ -8,7 +8,7 @@
   "loc.input.label.packageType": "Пакет для установки",
   "loc.input.help.packageType": "Выберите, следует ли устанавливать только среду выполнения или пакет SDK.",
   "loc.input.label.version": "Версия",
-  "loc.input.help.version": "Укажите версию пакета SDK для .NET Core или среды выполнения для установки.<br/>Версии можно задать в следующих форматах<li>2.x   => установка последнего основного номера версии.</li><li>2.2.x => установка последнего основного и дополнительного номеров версии</li><li>2.2.104 => установка точной версии</li><br/>Найдите значение \"version\" для установки пакета SDK или среды выполнения в releases.json. Ссылку на releases.json для версии основной_номер.дополнительный_номер можно найти в [**файле releases-index.**](https://github.com/dotnet/core/blob/master/release-notes/releases-index.json). Ссылка на releases.json для версии 2.2: https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/2.2/releases.json",
+  "loc.input.help.version": "Укажите версию пакета SDK для .NET Core или среды выполнения для установки.<br/>Версии можно задать в следующих форматах<li>2.x   => установка последнего основного номера версии.</li><li>2.2.x => установка последнего основного и дополнительного номеров версии</li><li>2.2.104 => установка точной версии</li><br/>Найдите значение \"version\" для установки пакета SDK или среды выполнения в releases.json. Ссылку на releases.json для версии основной_номер.дополнительный_номер можно найти в [**файле releases-index.**](https://builds.dotnet.microsoft.com/dotnet/release-metadata/releases-index.json). Ссылка на releases.json для версии 2.2: https://builds.dotnet.microsoft.com/dotnet/release-metadata/2.2/releases.json",
   "loc.input.label.includePreviewVersions": "Включить предварительные версии",
   "loc.input.help.includePreviewVersions": "Выберите, нужно ли включать предварительные версии при поиске последних версий, например 2.2.x. Этот параметр игнорируется, если указана точная версия, например 3.0.100-preview3-010431",
   "loc.input.label.installationPath": "Путь для установки .NET Core",
@@ -38,7 +38,7 @@
   "loc.messages.PrependGlobalToolPath": "Создание глобального пути к средству и добавление его в начало PATH.",
   "loc.messages.VersionsFileMalformed": "Ссылки на скачивание для указанной версии неправильно сформированы в документе поддерживаемых версий => %s/",
   "loc.messages.MatchingVersionNotFound": "Не удалось найти соответствующую версию %s для указанной версии: %s. Обратите внимание, что предварительные версии учитываются при поиске последней версии, только если установлен флажок \"Включить предварительные версии\".",
-  "loc.messages.UnableToAccessPath": "Unable to access path: %s. Error: %s. Please make sure that agent process has access to the path.",
+  "loc.messages.UnableToAccessPath": "Не удалось получить доступ к пути: %s. Ошибка: %s. Убедитесь, что процесс агента имеет доступ к этому пути.",
   "loc.messages.VersionCanNotBeDownloadedFromUrl": "Версию %s не удается скачать по URL-адресу %s. Неверное значение URL-адреса или версии.",
   "loc.messages.CopyingFoldersIntoPath": "Копирование всех корневых папок в путь установки: %s",
   "loc.messages.CopyingFilesIntoPath": "Копирование корневых файлов (например, dotnet.exe) в путь установки: %s",
@@ -47,7 +47,7 @@
   "loc.messages.ExplicitVersionRequired": "Версия %s не разрешена. Устанавливаемые версии должны иметь формат: основной_номер.дополнительный_номер.версия_исправления. Например: 2.2.1",
   "loc.messages.VersionFoundInCache": "Версия %s найдена в кэше.",
   "loc.messages.VersionNotFoundInCache": "Версия %s не найдена в кэше.",
-  "loc.messages.CreatingInstallationCompeleteFile": "Creating installation complete marker file for .Net core %s version %s",
+  "loc.messages.CreatingInstallationCompeleteFile": "Создание файла маркера завершения установки для .NET Core %s версии %s",
   "loc.messages.CannotFindRuntimeVersionForCompletingInstallation": "Не удается найти версию среды выполнения для типа пакета: %s с версией: %s",
   "loc.messages.PathNotFoundException": "Не удалось найти путь: %s. Убедитесь, что он существует.",
   "loc.messages.VersionIsLocalLatest": "Версия %s является последней из версий, представленных по пути %s",
@@ -63,7 +63,7 @@
   "loc.messages.VersionNotFound": "Сопоставление версий %s: не удалось найти %s",
   "loc.messages.VersionNotAllowed": "Версия %s не разрешена. Разрешенные типы версий: основной_номер_версии.x, основной_номер_версии.дополнительный_номер_версии.x, основной_номер_версии.дополнительный_номер_версии.версия_исправления",
   "loc.messages.VersionsCanNotBeCompared": "Версии %s и %s невозможно сравнить. Обе версии должны быть явными.",
-  "loc.messages.FileNameNotCorrectCompleteFileName": "File name %s is not a correct '.complete' file.",
+  "loc.messages.FileNameNotCorrectCompleteFileName": "Имя файла %s не является правильным файлом COMPLETE.",
   "loc.messages.ChannelVersionsNotComparable": "Версии канала %s и %s невозможно сравнить. Они должны иметь числовые основной и дополнительный номера версии.",
   "loc.messages.LookingForVersionInChannel": "Поиск версии в канале %s",
   "loc.messages.FallingBackToAdjacentChannels": "Не удалось найти версию %s в ее канале, сейчас будет выполнен поиск в смежных каналах.",
@@ -78,5 +78,6 @@
   "loc.messages.FilesDataIsIncorrectInVersion": "В выпуске %s для версии %s приведены неправильные данные файла (возможно, отсутствуют обязательные поля, такие как name, rid и url): %s",
   "loc.messages.VersionFilesDataIncorrect": "Данные файлов версии отсутствуют или не содержат обязательные поля.",
   "loc.messages.VersionInformationNotComplete": "В файле releases.json указаны неполные обязательные сведения для версии %s. Ошибка: %s",
-  "loc.messages.FailedWhileExtractingPacakge": "Сбой при извлечении скачанного пакета, ошибка: %s"
+  "loc.messages.FailedWhileExtractingPacakge": "Сбой при извлечении скачанного пакета, ошибка: %s",
+  "loc.messages.DeprecatedTask": "Задача DotNetCoreInstaller@1 (установщик .NET Core SDK или среды выполнения) устарела с 22 августа 2019 г. и скоро будет прекращена. Вместо этого используйте задачу UseDotNet@2. Посетите https://aka.ms/azdo-deprecated-tasks, чтобы получить дополнительные сведения об устаревших задачах."
 }

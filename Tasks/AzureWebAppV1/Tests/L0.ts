@@ -1,16 +1,32 @@
-import fs = require('fs');
-import assert = require('assert');
-import path = require('path');
+import * as path from "path";
+import * as assert from "assert";
+import * as ttm from "azure-pipelines-task-lib/mock-test";
+import tl = require('azure-pipelines-task-lib');
 
-describe('AzureWebAppV1 Suite', function () {
-    before(() => {
+// Import Kudu warmup tests
+import './KuduWarmupTests';
+
+const tmpDir = path.join(__dirname, 'temp');
+
+describe('AzureWebApp Suite', function() {
+    this.timeout(60000);
+    this.beforeAll(async function() {
+        tl.mkdirP(tmpDir);
+    });
+    this.afterAll(async function() {
+        tl.rmRF(tmpDir);
     });
 
-    after(() => {
-    });
-
-    it('Does a basic hello world test', function(done: MochaDone) {
-        // TODO - add real tests
-        done();
+    it('AzureWebAppV1 Validate TaskParameters', async () => {
+        let tp = path.join(__dirname,'TaskParametersTests.js');
+        let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        try {
+            await tr.runAsync();
+            assert(tr.stdOutContained('msbuild package PRESENT'), 'Should have printed: msbuild package PRESENT');
+        }
+        catch(error) {
+            console.log(tr.stdout);
+            console.log(tr.stderr);
+        }
     });
 });

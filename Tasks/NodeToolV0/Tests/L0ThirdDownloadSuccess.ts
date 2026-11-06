@@ -6,8 +6,10 @@ import path = require('path');
 let taskPath = path.join(__dirname, '..', 'nodetool.js');
 let tmr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(taskPath);
 
+tmr.setInput('versionSource', 'spec');
 tmr.setInput('versionSpec', '0.12.18');
 tmr.setInput('checkLatest', 'false');
+tmr.setInput('nodejsMirror', 'https://nodejs.org/dist');
 
 let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
     "assertAgent": {
@@ -45,7 +47,7 @@ tmr.registerMock('azure-pipelines-tool-lib/tool', {
         let version: string;
         for (let i = versions.length - 1; i >= 0; i--) {
             let potential: string = versions[i];
-            let satisfied: boolean = potential === 'v0.12.18';
+            let satisfied: boolean = potential === '0.12.18';
             if (satisfied) {
                 version = potential;
                 break;
@@ -57,6 +59,29 @@ tmr.registerMock('azure-pipelines-tool-lib/tool', {
         return '0.12.18';
     },
     downloadTool(url) {
+        let err = new Error();
+        err['httpStatusCode'] = '404';
+        if (url === `https://nodejs.org/dist/v0.12.18/node-v0.12.18-win-${os.arch()}.7z` ||
+            url === `https://nodejs.org/dist/v0.12.18/node-v0.12.18-${os.platform()}-${os.arch()}.tar.gz`) {
+            throw err;
+        }
+        else if (url === `https://nodejs.org/dist/v0.12.18/win-${os.arch()}/node.exe`) {
+            throw err;
+        }
+        else if (url === `https://nodejs.org/dist/v0.12.18/win-${os.arch()}/node.lib`) {
+            throw err;
+        }
+        else if (url === `https://nodejs.org/dist/v0.12.18/node.exe`) {
+            return 'exe_loc';
+        }
+        else if (url === `https://nodejs.org/dist/v0.12.18/node.lib`) {
+            return 'exe_lib';
+        }
+        else {
+            throw new Error('Incorrect URL');
+        }
+    },
+    downloadToolWithRetries(url) {
         let err = new Error();
         err['httpStatusCode'] = '404';
         if (url === `https://nodejs.org/dist/v0.12.18/node-v0.12.18-win-${os.arch()}.7z` ||

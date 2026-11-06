@@ -4,7 +4,10 @@ import * as tl from 'azure-pipelines-task-lib/task';
 import * as fs from 'fs';
 import * as sshHelper from './ssh2helpers';
 import { v4 as generateRandomUUID } from 'uuid';
-import { ConnectConfig } from 'ssh2';
+import { ClientChannel, ConnectConfig } from 'ssh2';
+import { sanitizeArgs } from 'azure-pipelines-tasks-utility-common/argsSanitizer';
+import { emitTelemetry } from "azure-pipelines-tasks-utility-common/telemetry";
+import { shellQuote } from 'azure-pipelines-tasks-utility-common/shellEscaping';
 
 /**
  * By default configuration, SSH runs on port 22.
@@ -23,12 +26,16 @@ async function run() {
 
         //read SSH endpoint input
         const sshEndpoint = tl.getInput('sshEndpoint', true);
+        const tryKeyboard: boolean = tl.getBoolInput('interactiveKeyboardAuthentication', false);
         const username: string = tl.getEndpointAuthorizationParameter(sshEndpoint, 'username', false);
         const password: string = tl.getEndpointAuthorizationParameter(sshEndpoint, 'password', true); //passphrase is optional
         const privateKey: string = process.env['ENDPOINT_DATA_' + sshEndpoint + '_PRIVATEKEY']; //private key is optional, password can be used for connecting
         const hostname: string = tl.getEndpointDataParameter(sshEndpoint, 'host', false);
         const port: number = getServerPort(sshEndpoint); //port is optional, will use 22 as default port if not specified
         const interactiveSession: boolean = tl.getBoolInput('interactiveSession', false);
+        // Secure by default: when false, ##vso[...] lines in remote output are neutralized
+        // (printed as text, not executed). Set true only to trust remote logging commands.
+        const allowVsoCommands: boolean = tl.getBoolInput('enableRemoteVsoCommands', false);
         const readyTimeout = getReadyTimeoutVariable();
 
         //setup the SSH connection configuration based on endpoint details
@@ -36,7 +43,8 @@ async function run() {
             host: hostname,
             port: port,
             username: username,
-            readyTimeout: readyTimeout
+            readyTimeout: readyTimeout,
+            tryKeyboard: tryKeyboard,
         };
 
         if (privateKey) {
@@ -107,7 +115,7 @@ async function run() {
                     tl.debug(`Running command ${command} on remote machine.`);
                     console.log(command);
                     const returnCode: string = await sshHelper.runCommandOnRemoteMachine(
-                        command, sshClientConnection, remoteCmdOptions, password, interactiveSession);
+                        command, sshClientConnection, remoteCmdOptions, password, interactiveSession, allowVsoCommands);
                     tl.debug(`Command ${command} completed with return code = ${returnCode}`);
                 }
             } else {
@@ -131,12 +139,12 @@ async function run() {
                     scpConfig.password = password;
                 }
 
-                 //copy script file to remote machine
+                //copy script file to remote machine
                 tl.debug('Copying script to remote machine.');
                 await sshHelper.copyScriptToRemoteMachine(scriptFile, remoteScriptPath, scpConfig);
 
                 //change the line encodings
-                let originalScriptPath: string = ''; 
+                let originalScriptPath: string = '';
                 if (isWin) {
                     tl.debug('Fixing the line endings in case the file was created in Windows');
                     originalScriptPath = remoteScriptPath;
@@ -146,28 +154,63 @@ async function run() {
                 //set execute permissions on the script
                 tl.debug('Setting execute permission on script copied to remote machine');
                 console.log(`chmod +x ${remoteScriptPath}`);
-                await sshHelper.runCommandOnRemoteMachine(`chmod +x ${remoteScriptPath}`, sshClientConnection, remoteCmdOptions);
+                await sshHelper.runCommandOnRemoteMachine(`chmod +x ${shellQuote(remoteScriptPath)}`, sshClientConnection, remoteCmdOptions);
 
                 //run remote script file with args on the remote machine
                 let runScriptCmd = remoteScriptPath;
                 if (args) {
-                    runScriptCmd = runScriptCmd.concat(' ' + args);
+                    let resultArgs = args;
+
+                    const featureFlags = {
+                        audit: tl.getBoolFeatureFlag('AZP_75787_ENABLE_NEW_LOGIC_LOG'),
+                        activate: tl.getBoolFeatureFlag('AZP_75787_ENABLE_NEW_LOGIC'),
+                        telemetry: tl.getBoolFeatureFlag('AZP_75787_ENABLE_COLLECT')
+                    };
+
+                    if (featureFlags.activate || featureFlags.audit || featureFlags.telemetry) {
+                        const targetIsPowerShell = tl.getPipelineFeature('EnablePowerShellArgQuoting')
+                            && await isTargetPowerShell(sshClientConnection);
+                        const [sanitizedArgs, telemetry] = sanitizeArgs(
+                            args,
+                            targetIsPowerShell ? {
+                                argsSplitSymbols: '``',
+                                saniziteRegExp: new RegExp('(?<!`)([^a-zA-Z0-9\\\\` _\'"\\-=\\/:.])', 'g')
+                            } : {
+                                argsSplitSymbols: '\\\\',
+                                saniziteRegExp: new RegExp(`(?<!\\\\)([^a-zA-Z0-9\\\\ _'"\\-=\\/:.])`, 'g')
+                            }
+                        );
+                        if (sanitizedArgs !== args) {
+                            if (featureFlags.telemetry && telemetry) {
+                                emitTelemetry('TaskHub', 'SshV0', telemetry);
+                            }
+                            const message = tl.loc('ScriptArgsSanitized');
+                            if (featureFlags.activate) {
+                                throw new Error(message);
+                            }
+                            if (featureFlags.audit) {
+                                tl.warning(message);
+                            }
+                        }
+                    }
+
+                    runScriptCmd = runScriptCmd.concat(' ' + resultArgs);
                 }
 
                 //setup command to clean up script file
-                cleanUpScriptCmd = `rm -f ${remoteScriptPath}`;
+                cleanUpScriptCmd = `rm -f ${shellQuote(remoteScriptPath)}`;
                 if (isWin) {
-                    cleanUpScriptCmd = `rm -f ${remoteScriptPath} ${originalScriptPath}`;
+                    cleanUpScriptCmd = `rm -f ${shellQuote(remoteScriptPath)} ${shellQuote(originalScriptPath)}`;
                 }
 
                 console.log(runScriptCmd);
                 await sshHelper.runCommandOnRemoteMachine(
-                    runScriptCmd, sshClientConnection, remoteCmdOptions, password, interactiveSession);
+                    runScriptCmd, sshClientConnection, remoteCmdOptions, password, interactiveSession, allowVsoCommands);
             }
         }
 
     } catch (err) {
-        tl.setResult(tl.TaskResult.Failed, err);
+        tl.setResult(tl.TaskResult.Failed, err.message);
     } finally {
         //clean up script file if needed
         if (cleanUpScriptCmd) {
@@ -225,4 +268,52 @@ function getServerPort(sshEndpoint: string): number {
     }
 
     return port;
+}
+
+/**
+ * Checks if the remote shell is PowerShell by running Get-Host, a PowerShell-only cmdlet.
+ */
+async function isTargetPowerShell(sshClient: any): Promise<boolean> {
+    let exitCode: number = null;
+    let timeout: ReturnType<typeof setTimeout>;
+    let probeStream: ClientChannel;
+    let timedOut = false;
+    try {
+        await new Promise<void>((resolve, reject) => {
+            timeout = setTimeout(() => {
+                timedOut = true;
+                reject(new Error('PowerShell detection probe timed out.'));
+                if (probeStream) {
+                    probeStream.close();
+                }
+            }, 10000);
+            sshClient.exec('Get-Host | Out-Null', (err, stream) => {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+                probeStream = stream;
+                stream.on('error', reject);
+                stream.stderr.on('error', reject);
+                if (timedOut) {
+                    stream.close();
+                    return;
+                }
+                stream.resume();
+                stream.stderr.resume();
+                stream.on('close', (code) => {
+                    tl.debug(`PowerShell detection probe: stream closed with code ${code}.`);
+                    exitCode = code;
+                    resolve();
+                });
+            });
+        });
+    } catch (err) {
+        tl.debug(`PowerShell detection probe failed: ${err}`);
+        return false;
+    } finally {
+        clearTimeout(timeout);
+    }
+
+    return exitCode === 0;
 }

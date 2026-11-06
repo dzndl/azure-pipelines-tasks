@@ -1,3 +1,6 @@
+# Bounded deadline for the non-critical GitHub module-version advisory request.
+$script:AzureModuleVersionRequestTimeoutSeconds = 3
+
 function Get-SavedModuleContainerPath {
     [CmdletBinding()]
     param (
@@ -178,26 +181,230 @@ function Get-LatestModuleLinux {
 }
 
 function CleanUp-PSModulePathForHostedAgent {
+     # Define the module paths to clean up
+    $modulePaths = @(
+        "C:\Modules\azurerm_2.1.0",
+        "C:\\Modules\azurerm_2.1.0",
+        "C:\Modules\azure_2.1.0",
+        "C:\\Modules\azure_2.1.0"
+    )
+
     # Clean up PSModulePath for hosted agent
-    $azureRMModulePath = "C:\Modules\azurerm_2.1.0"
-    $azureModulePath = "C:\Modules\azure_2.1.0"
     $azPSModulePath = $env:PSModulePath
-
-    if ($azPSModulePath.split(";") -contains $azureRMModulePath) {
-        $azPSModulePath = (($azPSModulePath).Split(";") | ? { $_ -ne $azureRMModulePath }) -join ";"
-        write-verbose "$azureRMModulePath removed. Restart the prompt for the changes to take effect."
-    }
-    else {
-        write-verbose "$azureRMModulePath is not present in $azPSModulePath"
-    }
-
-    if ($azPSModulePath.split(";") -contains $azureModulePath) {
-        $azPSModulePath = (($azPSModulePath).Split(";") | ? { $_ -ne $azureModulePath }) -join ";"
-        write-verbose "$azureModulePath removed. Restart the prompt for the changes to take effect."
-    }
-    else {
-        write-verbose "$azureModulePath is not present in $azPSModulePath"
+    foreach ($modulePath in $modulePaths) {
+        if ($azPSModulePath.split(";") -contains $modulePath) {
+            $azPSModulePath = (($azPSModulePath).Split(";") | ? { $_ -ne $modulePath }) -join ";"
+            Write-Verbose "$modulePath removed. Restart the prompt for the changes to take effect."
+        }
+        else {
+            Write-Verbose "$modulePath is not present in $azPSModulePath"
+        }
     }
 
     $env:PSModulePath = $azPSModulePath
+}
+
+
+function Invoke-AzureModuleVersionRequest {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$url,
+
+        [Parameter(Mandatory = $true)]
+        [int]$requestTimeoutSeconds
+    )
+
+    Add-Type -AssemblyName System.Net.Http
+
+    $handler = New-Object System.Net.Http.HttpClientHandler
+    # Route through the system/corporate proxy (default) and supply the agent's default proxy credentials, matching Invoke-RestMethod.
+    $handler.UseProxy = $true
+    $handler.DefaultProxyCredentials = [System.Net.CredentialCache]::DefaultCredentials
+
+    # HttpClient owns the handler by default, so disposing the client also disposes the handler.
+    $client = New-Object System.Net.Http.HttpClient($handler)
+
+    try {
+        $client.Timeout = [TimeSpan]::FromSeconds($requestTimeoutSeconds)
+        $client.DefaultRequestHeaders.UserAgent.ParseAdd("AzurePipelines-AzurePowerShell")
+
+        $content = $client.GetStringAsync($url).GetAwaiter().GetResult()
+        return $content | ConvertFrom-Json
+    }
+    finally {
+        $client.Dispose()
+    }
+}
+
+function Get-MajorVersionOnAzurePackage {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$moduleName,
+        [int]$requestTimeoutSeconds = 0
+    )
+    # GitHub API URL for Azure releases
+    $url = "https://api.github.com/repos/Azure/${moduleName}/releases"
+    try {
+        if ($requestTimeoutSeconds -gt 0) {
+            $response = Invoke-AzureModuleVersionRequest -url $url -requestTimeoutSeconds $requestTimeoutSeconds
+        } else {
+            $response = Invoke-RestMethod -Uri $url -Method Get
+        }
+        $majorReleases = $response
+        If ($moduleName -eq 'azure-powershell') {
+            $majorReleases = $response  | Where-Object { $_.tag_name -match '^v\d+\.\d+\.0' } | Sort-Object { $_.id } -Descending
+        } 
+        $lastOneRelease = $majorReleases | Select-Object -First 1
+    } catch {
+        Write-Verbose "Attempting to find the latest major release failed with the error: $($_.Exception.Message)"
+    }
+    return $lastOneRelease
+}
+
+function Get-LatestModuleFromCommonPath {
+    [CmdletBinding()]
+    param([string] $patternToMatch,
+          [string] $patternToExtract)
+
+    $commonPaths = $env:PSModulePath -split ';'
+    $maxVersion = [version] "0.0.0"
+    $regexToMatch = New-Object -TypeName System.Text.RegularExpressions.Regex -ArgumentList $patternToMatch
+    $regexToExtract = New-Object -TypeName System.Text.RegularExpressions.Regex -ArgumentList $patternToExtract
+
+    foreach ($path in $commonPaths) {
+        $azModulePath = Join-Path $path $moduleName
+        if (Test-Path $azModulePath) {
+            Write-Verbose "Found Az module directory at: $azModulePath"
+            $versions = Get-ChildItem -Directory -Path $modulePath | Where-Object { $regexToMatch.IsMatch($_.Name) }
+            foreach ($versionDir in $versions) {
+                $manifestPath = Join-Path $versionDir.FullName "$moduleName.psd1"
+                $moduleVersion = [version] $($regexToExtract.Match($moduleFolder.Name).Groups[0].Value)
+                if($moduleVersion -gt $maxVersion) {
+                    if (Test-Path $manifestPath) {
+                        $maxVersion = $moduleVersion
+                    }
+                }
+            }
+        }
+    }
+    return $maxVersion
+}
+
+function Get-InstalledMajorRelease {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$moduleName,
+        [Parameter(Mandatory=$true)]
+        [bool]$isWin,
+        [switch]$localOnly
+    )
+    $version = ''
+    $versionPattern = "[0-9]+\.[0-9]+\.[0-9]+"
+    Write-Verbose "Attempting to find installed version of module: $moduleName"
+    $isHostedAgent = Test-IsHostedAgentPathPresent -isWin $isWin
+    if ($isHostedAgent) {
+        if ($isWin) {
+            $latestAzPath = Get-LatestModule -patternToMatch "^az_[0-9]+\.[0-9]+\.[0-9]+$" -patternToExtract "[0-9]+\.[0-9]+\.[0-9]+$"
+        } else {
+            $latestAzPath = Get-LatestModuleLinux -patternToMatch "^az_[0-9]+\.[0-9]+\.[0-9]+$" -patternToExtract "[0-9]+\.[0-9]+\.[0-9]+$"
+        }
+        if ($latestAzPath -and $latestAzPath -match $versionPattern -and $latestAzPath -ne '0.0.0') {
+            $version = $Matches[0]
+            Write-Debug "Found Az module version from hosted agent module path: $version"
+            return $version
+        }
+    }
+    if (!$localOnly) {
+        try {
+            $installedModule = Get-InstalledModule -Name $moduleName -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
+            if ($installedModule) {
+                $version = $installedModule.Version.ToString()
+                Write-Debug "Found Az module version from Get-InstalledModule: $version"
+                return $version
+            }
+        } catch {
+            Write-Verbose "Get-InstalledModule failed: $($_.Exception.Message)"
+        }
+    }
+    try {
+        # First try to get the Az module directly
+        $azModule = Get-Module -Name $moduleName -ListAvailable -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
+        if ($azModule) {
+            $version = $azModule.Version.ToString()
+            Write-Host "Found Az module version directly in Get-Module: $version"
+            return $version
+        }
+        if (!$isHostedAgent) {
+            $version = Get-LatestModuleFromCommonPath -patternToMatch "^az_[0-9]+\.[0-9]+\.[0-9]+$" -patternToExtract "[0-9]+\.[0-9]+\.[0-9]+$"
+            if ($version -and $version -ne '0.0.0') {
+                # $version = $azModule.ToString()
+                Write-Debug "Found Az module version For self hosted Agent: $version"
+                return $version
+            }
+            throw ("Could not find the module version of $moduleName. Please ensure the Az module is installed on the agent.")
+        }
+    } catch {
+        Write-Verbose "Az module specific detection failed: $($_.Exception.Message)"
+    }
+}
+
+function Get-IsSpecifiedPwshAzVersionOlder{
+    [CmdletBinding()]
+    param([string] $specifiedVersion,
+          [string] $latestRelease,
+          [int] $versionsToReduce)
+
+    $specifiedVersion = ($specifiedVersion -split '\.')[0]
+    Write-Host "specifiedVersion : $specifiedVersion"
+    Write-Host "latest Release: $latestRelease"
+    if($latestRelease -match '(?<major>0|[1-9]\d*)\.(?<minor>0|[1-9]\d*)\.(?<patch>0|[1-9]\d*)?'){
+        $latestMajorRelease = $matches['major']
+    }
+
+    if(([int]$specifiedVersion) -le ([int]$latestMajorRelease-$versionsToReduce)){
+        return $true
+    }
+    return $false
+}
+
+function Initialize-ModuleVersionValidation {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$moduleName,
+        [Parameter(Mandatory=$true)]
+        [AllowEmptyString()]
+        [string]$targetAzurePs,
+        [Parameter(Mandatory=$true)]
+        [string]$displayModuleName,
+        [Parameter(Mandatory=$true)]
+        [int]$versionsToReduce
+    )
+
+    try {
+        $DisplayWarningForOlderAzVersion = Get-VstsPipelineFeature -FeatureName "ShowWarningOnOlderAzureModules"
+        if ($DisplayWarningForOlderAzVersion -eq $true) {
+            $enableRequestTimeout = Get-VstsPipelineFeature -FeatureName "EnableAzureModuleVersionCheckRequestTimeout"
+            if ($targetAzurePs -eq "") {
+                if ($enableRequestTimeout) {
+                    $targetAzurePs = Get-InstalledMajorRelease -moduleName $displayModuleName -isWin $true -localOnly
+                } else {
+                    $targetAzurePs = Get-InstalledMajorRelease -moduleName $displayModuleName -isWin $true
+                }
+            }
+            if ($enableRequestTimeout) {
+                $latestRelease = Get-MajorVersionOnAzurePackage -moduleName $moduleName -requestTimeoutSeconds $script:AzureModuleVersionRequestTimeoutSeconds
+            } else {
+                $latestRelease = Get-MajorVersionOnAzurePackage -moduleName $moduleName
+            }
+            if (Get-IsSpecifiedPwshAzVersionOlder -specifiedVersion $targetAzurePs -latestRelease $($latestRelease.tag_name) -versionsToReduce $versionsToReduce) {
+                Write-Warning (Get-VstsLocString -Key Az_LowerVersionWarning -ArgumentList $displayModuleName, $targetAzurePs, $($latestRelease.tag_name))
+            }       
+        }
+    } catch {
+        Write-Verbose "Error while validating Az version: $($_.Exception.Message)"
+    }
 }

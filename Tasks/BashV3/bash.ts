@@ -2,36 +2,74 @@ import fs = require('fs');
 import path = require('path');
 import tl = require('azure-pipelines-task-lib/task');
 import tr = require('azure-pipelines-task-lib/toolrunner');
+import { emitTelemetry } from 'azure-pipelines-tasks-utility-common/telemetry';
+import { ArgsSanitizingError } from './utils/errors';
+import { validateFileArgs } from './helpers';
 var uuidV4 = require('uuid/v4');
 
-const noProfile = tl.getBoolInput('noProfile');
-const noRc = tl.getBoolInput('noRc');
+async function runBashPwd(bashPath: string, directoryPath: string): Promise<string> {
+    let pwdOutput = '';
+    const bashPwd = tl.tool(bashPath).arg('-c').arg('pwd');
+    bashPwd.on('stdout', data => pwdOutput += data.toString());
 
-async function translateDirectoryPath(bashPath: string, directoryPath: string): Promise<string> {
-    let bashPwd = tl.tool(bashPath)
-        .arg('--noprofile')
-        .arg('--norc')
-        .arg('-c')
-        .arg('pwd');
-
-    let bashPwdOptions = <tr.IExecOptions>{
+    const bashPwdOptions = <tr.IExecOptions>{
         cwd: directoryPath,
         failOnStdErr: true,
         errStream: process.stdout,
         outStream: process.stdout,
         ignoreReturnCode: false
     };
-    let pwdOutput = '';
-    bashPwd.on('stdout', (data) => {
-        pwdOutput += data.toString();
-    });
+
     await bashPwd.exec(bashPwdOptions);
+
     pwdOutput = pwdOutput.trim();
+
     if (!pwdOutput) {
         throw new Error(tl.loc('JS_TranslatePathFailed', directoryPath));
     }
 
-    return `${pwdOutput}`;
+    return pwdOutput;
+}
+
+async function translateDirectoryPath(bashPath: string, directoryPath: string): Promise<string> {
+    if (directoryPath.endsWith('\\')) {
+        directoryPath = directoryPath.slice(0, -1);
+    }
+
+    const directoryPathTranslated = await runBashPwd(bashPath, directoryPath);
+
+    const parentDirectoryPath = directoryPath.split('\\').slice(0, -1).join('\\');
+
+    if (parentDirectoryPath.split('\\').join('')) {
+        const parentDirectoryPathTranslated = await runBashPwd(bashPath, parentDirectoryPath);
+
+        if (directoryPathTranslated == parentDirectoryPathTranslated) {
+            throw new Error(tl.loc('JS_TranslatePathFailed', directoryPath));
+        }
+    }
+
+    return directoryPathTranslated;
+}
+
+/**
+ * Set value for `BASH_ENV` environment variable
+ * 
+ * The pipeline task invokes bash as non-interactive shell. In this mode Bash looks only for `BASH_ENV` environment variable. 
+ * The value of `BASH_ENV` is expanded and used as the name of a startup file to read before executing the script.
+ * 
+ * If the environment variable `BASH_ENV` has already been defined, the function will override this variable only for the current task.
+ * 
+ * @param {string} valueToSet - Value that will be set to `BASH_ENV` environment variable
+ */
+function setBashEnvVariable(valueToSet: string): void {
+    const bashEnv: string = process.env["BASH_ENV"];
+
+    if (bashEnv) {
+        console.log(tl.loc('JS_BashEnvAlreadyDefined', bashEnv, valueToSet));
+    }
+
+    process.env["BASH_ENV"] = valueToSet;
+    tl.debug(`The BASH_ENV environment variable was set to ${valueToSet}`);
 }
 
 async function run() {
@@ -46,6 +84,12 @@ async function run() {
         let input_script: string;
         let old_source_behavior: boolean;
         let input_targetType: string = tl.getInput('targetType') || '';
+        const input_bashEnvValue: string = tl.getInput('bashEnvValue') || '';
+
+        if (input_bashEnvValue) {
+            setBashEnvVariable(input_bashEnvValue);
+        }
+
         if (input_targetType.toUpperCase() == 'FILEPATH') {
             old_source_behavior = !!process.env['AZP_BASHV3_OLD_SOURCE_BEHAVIOR'];
             input_filePath = tl.getPathInput('filePath', /*required*/ true);
@@ -72,6 +116,23 @@ async function run() {
             else {
                 targetFilePath = input_filePath;
             }
+
+            try {
+                validateFileArgs(input_arguments);
+            }
+            catch (error: any) {
+                if (error instanceof ArgsSanitizingError) {
+                    throw error;
+                }
+
+                emitTelemetry('TaskHub', 'BashV3',
+                    {
+                        UnexpectedError: error?.message ?? JSON.stringify(error) ?? null,
+                        ErrorStackTrace: error?.stack ?? null
+                    }
+                );
+            }
+
             // Choose behavior:
             // If they've set old_source_behavior, source the script. This is what we used to do and needs to hang around forever for back compat reasons
             // If they've not, execute the script with bash. This is our new desired behavior.
@@ -99,7 +160,8 @@ async function run() {
         tl.checkPath(tempDirectory, `${tempDirectory} (agent.tempDirectory)`);
         let fileName = uuidV4() + '.sh';
         let filePath = path.join(tempDirectory, fileName);
-        await fs.writeFileSync(
+
+        fs.writeFileSync(
             filePath,
             contents,
             { encoding: 'utf8' });
@@ -112,12 +174,6 @@ async function run() {
         // Create the tool runner.
         console.log('========================== Starting Command Output ===========================');
         let bash = tl.tool(bashPath);
-        if (noProfile) {
-            bash.arg('--noprofile');
-        }
-        if (noRc) {
-            bash.arg('--norc');
-        }
         bash.arg(filePath);
 
         let options = <tr.IExecOptions>{
@@ -128,9 +184,10 @@ async function run() {
             ignoreReturnCode: true
         };
 
-        process.on("SIGINT", () => {
-            tl.debug('Started cancellation of executing script');
-            bash.killChildProcess();
+        ['SIGHUP', 'SIGINT', 'SIGQUIT', 'SIGTERM', 'EXIT'].forEach((signal) => {
+            process.on(signal, () => {
+                bash.killChildProcess(signal as NodeJS.Signals);
+            });
         });
 
         // Listen for stderr.
@@ -150,7 +207,12 @@ async function run() {
 
         // Fail on exit code.
         if (exitCode !== 0) {
-            tl.error(tl.loc('JS_ExitCode', exitCode));
+            if (exitCode == 137) {
+                tl.error(tl.loc('JS_ExitCode_137'));
+            } 
+            else {
+                tl.error(tl.loc('JS_ExitCode', exitCode));
+            }
             result = tl.TaskResult.Failed;
         }
 
@@ -158,14 +220,14 @@ async function run() {
         if (stderrFailure) {
             tl.error(tl.loc('JS_Stderr'));
             aggregatedStderr.forEach((err: string) => {
-                tl.error(err);
+                tl.error(err, tl.IssueSource.CustomerScript);
             });
             result = tl.TaskResult.Failed;
         }
 
         tl.setResult(result, null, true);
     }
-    catch (err) {
+    catch (err: any) {
         tl.setResult(tl.TaskResult.Failed, err.message || 'run() failed', true);
     }
 }

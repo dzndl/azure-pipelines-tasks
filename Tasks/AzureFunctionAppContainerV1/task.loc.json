@@ -17,7 +17,7 @@
   "author": "Microsoft Corporation",
   "version": {
     "Major": 1,
-    "Minor": 187,
+    "Minor": 283,
     "Patch": 0
   },
   "minimumAgentVersion": "2.104.1",
@@ -157,8 +157,17 @@
   ],
   "instanceNameFormat": "ms-resource:loc.instanceNameFormat",
   "execution": {
-    "Node10": {
-      "target": "azurefunctiononcontainerdeployment.js"
+    "Node16": {
+      "target": "azurefunctiononcontainerdeployment.js",
+      "argumentFormat": ""
+    },
+    "Node20_1": {
+      "target": "azurefunctiononcontainerdeployment.js",
+      "argumentFormat": ""
+    },
+    "Node24": {
+      "target": "azurefunctiononcontainerdeployment.js",
+      "argumentFormat": ""
     }
   },
   "messages": {
@@ -211,6 +220,7 @@
     "RequestedURLforkuduphysicalpath": "ms-resource:loc.messages.RequestedURLforkuduphysicalpath",
     "Physicalpathalreadyexists": "ms-resource:loc.messages.Physicalpathalreadyexists",
     "KuduPhysicalpathCreatedSuccessfully": "ms-resource:loc.messages.KuduPhysicalpathCreatedSuccessfully",
+    "KuduStackTraceURL": "ms-resource:loc.messages.KuduStackTraceURL",
     "FailedtocreateKuduPhysicalPath": "ms-resource:loc.messages.FailedtocreateKuduPhysicalPath",
     "FailedtocheckphysicalPath": "ms-resource:loc.messages.FailedtocheckphysicalPath",
     "VirtualApplicationDoesNotExist": "ms-resource:loc.messages.VirtualApplicationDoesNotExist",

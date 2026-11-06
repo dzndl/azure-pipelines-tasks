@@ -1,6 +1,8 @@
 Trace-VstsEnteringInvocation $MyInvocation
 Import-VstsLocStrings "$PSScriptRoot\Task.json"
 
+Import-Module $PSScriptRoot\ps_modules\Sanitizer
+
 # Get inputs.
 $scriptType = Get-VstsInput -Name ScriptType -Require
 $scriptPath = Get-VstsInput -Name ScriptPath
@@ -13,6 +15,7 @@ $customTargetAzurePs = Get-VstsInput -Name CustomTargetAzurePs
 $input_pwsh = Get-VstsInput -Name pwsh -AsBool
 $input_workingDirectory = Get-VstsInput -Name workingDirectory -Require
 $restrictContext = Get-VstsInput -Name RestrictContextToCurrentTask -AsBool
+$validateScriptSignature = Get-VstsInput -Name validateScriptSignature -AsBool
 
 Write-Host "## Validating Inputs"
 # Validate the script path and args do not contains new-lines. Otherwise, it will
@@ -25,6 +28,17 @@ if ($scriptType -eq "FilePath") {
 
 if ($scriptArguments -match '[\r\n]') {
     throw (Get-VstsLocString -Key InvalidScriptArguments0 -ArgumentList $scriptArguments)
+}
+
+# Sanitize script arguments to prevent PowerShell command injection.
+# No-op unless BOTH the org-level "Enable shell tasks arguments validation"
+# toggle and the per-task pipeline feature flag are enabled.
+# See https://aka.ms/ado/75787 and Tasks/Common/Sanitizer/Invoke-ScriptArgumentSanitization.ps1.
+if ($scriptType -ne "InlineScript") {
+    Invoke-ScriptArgumentSanitization `
+        -InputArgs $scriptArguments `
+        -TaskName 'AzurePowerShellV4' `
+        -PipelineFeatureFlagName 'EnableAzurePowerShellArgumentsSanitization'
 }
 
 # string constants
@@ -47,9 +61,33 @@ if ($targetAzurePs -eq $latestVersion) {
 } elseif (-not($regex.IsMatch($targetAzurePs))) {
     throw (Get-VstsLocString -Key InvalidAzurePsVersion -ArgumentList $targetAzurePs)
 }
-Write-Host "## Validating Inputs Complete" 
+Write-Host "## Validating Inputs Complete"
 
 . $PSScriptRoot\TryMakingModuleAvailable.ps1 -targetVersion "$targetAzurePs" -platform Windows
+
+if ($validateScriptSignature) {
+    try {
+        if ($scriptType -ne "InlineScript") {
+            Write-Host "## Validating Script Signature"
+
+            # Validate script is signed
+            $scriptSignature = Get-AuthenticodeSignature $scriptPath
+            if ($scriptSignature.Status -eq "NotSigned") {
+                throw "Object does not have a digital signature. Please ensure your script is signed and try again."
+            }
+            elseif ($scriptSignature.Status -ne "Valid") {
+                throw "Digital signature of the object did not verify. Please ensure your script is properly signed and try again."
+            }
+
+            Write-Host "## Validating Script Signature Complete" 
+        }
+    }
+    catch 
+    {
+        $errorMsg = $_.Exception.Message
+        throw "Unable to validate script signature: $errorMsg"
+    }
+}
 
 Write-Host "## Initializing Az module"
 . "$PSScriptRoot\Utility.ps1"
@@ -58,19 +96,24 @@ $serviceName = Get-VstsInput -Name ConnectedServiceNameARM -Require
 $endpoint = Get-VstsEndpoint -Name $serviceName -Require
 CleanUp-PSModulePathForHostedAgent
 Update-PSModulePathForHostedAgent -targetAzurePs $targetAzurePs
+$vstsEndpoint = Get-VstsEndpoint -Name SystemVssConnection -Require
+$vstsAccessToken = $vstsEndpoint.auth.parameters.AccessToken
 
 # troubleshoot link
 $troubleshoot = "https://aka.ms/azurepowershelltroubleshooting"
-try 
+try
 {
     # Initialize Azure.
     Import-Module $PSScriptRoot\ps_modules\VstsAzureHelpers_
-    Initialize-AzModule -Endpoint $endpoint -azVersion $targetAzurePs
+    $encryptedToken = ConvertTo-SecureString $vstsAccessToken -AsPlainText -Force
+    Initialize-AzModule -Endpoint $endpoint -connectedServiceNameARM $serviceName `
+        -azVersion $targetAzurePs -encryptedToken $encryptedToken -isPSCore $input_pwsh
     Write-Host "## Az module initialization Complete"
     $success = $true
 }
 finally {
     if (!$success) {
+        Remove-EndpointSecrets
         Write-VstsTaskError "Initializing Az module failed: For troubleshooting, refer: $troubleshoot"
     }
 }
@@ -93,7 +136,7 @@ try {
             $contents += "`$VerbosePreference = 'continue'"
         }
 
-        $contents += ". $PSScriptRoot\UpdatePSModulePath.ps1 $UpdatePSModulePathArgument"
+        $contents += ". '$PSScriptRoot\UpdatePSModulePath.ps1' $UpdatePSModulePathArgument"
         if ($scriptType -eq "InlineScript") {
             $contents += "$scriptInline".Replace("`r`n", "`n").Replace("`n", "`r`n")
         } else {
@@ -156,7 +199,7 @@ try {
                             $message = $errorLines.ToString().Trim()
                             $null = $errorLines.Clear()
                             if ($message) {
-                                Write-VstsTaskError -Message $message
+                                Write-VstsTaskError -Message $message -IssueSource $IssueSources.CustomerScript
                             }
                         }
 
@@ -170,7 +213,7 @@ try {
                 $message = $errorLines.ToString().Trim()
                 $null = $errorLines.Clear()
                 if ($message) {
-                    Write-VstsTaskError -Message $message
+                    Write-VstsTaskError -Message $message -IssueSource $IssueSources.CustomerScript
                 }
             }
         }
@@ -196,6 +239,7 @@ try {
         Remove-Variable -Name scriptPath
         Remove-Variable -Name scriptInline
         Remove-Variable -Name scriptArguments
+        Remove-Variable -Name endpoint, vstsEndpoint, vstsAccessToken, encryptedToken -ErrorAction SilentlyContinue
 
         # Remove all commands imported from VstsTaskSdk, other than Out-Default.
         # Remove all commands imported from VstsAzureHelpers_.
@@ -255,11 +299,14 @@ try {
                 }
             }
     }
- 
+
 }
 finally {
     if ($__vstsAzPSInlineScriptPath -and (Test-Path -LiteralPath $__vstsAzPSInlineScriptPath) ) {
         Remove-Item -LiteralPath $__vstsAzPSInlineScriptPath -ErrorAction 'SilentlyContinue'
+    }
+    if ($__vstsAzPSScriptPath -and (Test-Path -LiteralPath $__vstsAzPSScriptPath) ) {
+        Remove-Item -LiteralPath $__vstsAzPSScriptPath -ErrorAction 'SilentlyContinue'
     }
 
     Import-Module $PSScriptRoot\ps_modules\VstsAzureHelpers_

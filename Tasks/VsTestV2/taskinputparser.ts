@@ -8,6 +8,7 @@ import * as ci from './cieventlogger';
 import * as versionFinder from './versionfinder';
 import { AreaCodes, ResultMessages } from './constants';
 import * as uuid from 'uuid';
+import { sanitizeForLoggingCommand } from './sanitize';
 const regedit = require('regedit');
 
 export function getvsTestConfigurations() {
@@ -162,8 +163,11 @@ function initTestConfigurations(testConfiguration: models.TestConfigurations) {
             testConfiguration.vsTestLocation = testConfiguration.toolsInstallerConfig.vsTestConsolePathFromPackageLocation;
 
             testConfiguration.toolsInstallerConfig.isToolsInstallerInUse = true;
-        } else if ((testConfiguration.vsTestVersion !== '16.0') && (testConfiguration.vsTestVersion !== '15.0') && (testConfiguration.vsTestVersion !== '14.0')
-            && (testConfiguration.vsTestVersion.toLowerCase() !== 'latest')) {
+        } else if ((testConfiguration.vsTestVersion !== '17.0') 
+                    && (testConfiguration.vsTestVersion !== '16.0') 
+                    && (testConfiguration.vsTestVersion !== '15.0') 
+                    && (testConfiguration.vsTestVersion !== '14.0') 
+                    && (testConfiguration.vsTestVersion.toLowerCase() !== 'latest')) {
             throw new Error(tl.loc('vstestVersionInvalid', testConfiguration.vsTestVersion));
         }
         console.log(tl.loc('vsVersionSelected', testConfiguration.vsTestVersion));
@@ -297,7 +301,7 @@ function getTestSelectorBasedInputs(testConfiguration: models.TestConfigurations
         case 'testassemblies':
             console.log(tl.loc('testSelectorInput', tl.loc('testAssembliesSelector')));
             testConfiguration.sourceFilter = tl.getDelimitedInput('testAssemblyVer2', '\n', true);
-            console.log(tl.loc('testAssemblyFilterInput', testConfiguration.sourceFilter));
+            console.log(tl.loc('testAssemblyFilterInput', sanitizeForLoggingCommand(testConfiguration.sourceFilter.toString())));
 
             testConfiguration.testcaseFilter = tl.getInput('testFiltercriteria');
             console.log(tl.loc('testFilterCriteriaInput', testConfiguration.testcaseFilter));
@@ -386,31 +390,34 @@ function getToolsInstallerConfiguration(): models.ToolsInstallerConfiguration {
         throw new Error(tl.loc('toolsInstallerPathNotSet'));
     }
 
-    // get path to Microsoft.IntelliTrace.ProfilerProxy.dll (amd64)
-    var amd64ProfilerProxy = tl.findMatch(toolsInstallerConfiguration.vsTestPackageLocation, "**\\amd64\\Microsoft.IntelliTrace.ProfilerProxy.dll");
-    if (amd64ProfilerProxy && amd64ProfilerProxy.length !== 0) {
-        toolsInstallerConfiguration.x64ProfilerProxyDLLLocation = amd64ProfilerProxy[0];
-    } else {
-        // Look in x64 also for Microsoft.IntelliTrace.ProfilerProxy.dll (x64)
-        amd64ProfilerProxy = tl.findMatch(toolsInstallerConfiguration.vsTestPackageLocation, "**\\x64\\Microsoft.IntelliTrace.ProfilerProxy.dll");
-        if (amd64ProfilerProxy && amd64ProfilerProxy.length !== 0) {
-            toolsInstallerConfiguration.x64ProfilerProxyDLLLocation = amd64ProfilerProxy[0];
+    var splitString = toolsInstallerConfiguration.vsTestConsolePathFromPackageLocation.split('\\');
+    var tpVer = parseInt(splitString[splitString.length - 2].split(".")[0],10);
+    var profilerProxyLocation;
+
+    tl.debug("TestPlatform Version Detected :" + tpVer);
+
+    if(tpVer < 17){
+        profilerProxyLocation = tl.findMatch(toolsInstallerConfiguration.vsTestPackageLocation, "**\\amd64\\Microsoft.IntelliTrace.ProfilerProxy.dll");
+        if (profilerProxyLocation && profilerProxyLocation.length !== 0) {
+            toolsInstallerConfiguration.x64ProfilerProxyDLLLocation = profilerProxyLocation[0];
         } else {
-            utils.Helper.publishEventToCi(AreaCodes.TOOLSINSTALLERCACHENOTFOUND, tl.loc('testImpactAndCCWontWork'), 1043, false);
+            profilerProxyLocation = tl.findMatch(toolsInstallerConfiguration.vsTestPackageLocation, "**\\x64\\Microsoft.IntelliTrace.ProfilerProxy.dll");
+            if (profilerProxyLocation && profilerProxyLocation.length !== 0) {
+                toolsInstallerConfiguration.x64ProfilerProxyDLLLocation = profilerProxyLocation[0];
+            }
+            else{
+                utils.Helper.publishEventToCi(AreaCodes.TOOLSINSTALLERCACHENOTFOUND, tl.loc('testImpactAndCCWontWork'), 1042, false);
+                tl.warning(tl.loc('testImpactAndCCWontWork'));
+            }
+        }
+        profilerProxyLocation = tl.findMatch(toolsInstallerConfiguration.vsTestPackageLocation, "**\\x86\\Microsoft.IntelliTrace.ProfilerProxy.dll");
+        if(profilerProxyLocation && profilerProxyLocation.length !== 0){
+            toolsInstallerConfiguration.x86ProfilerProxyDLLLocation = profilerProxyLocation[0];
+        }
+        else{
+            utils.Helper.publishEventToCi(AreaCodes.TOOLSINSTALLERCACHENOTFOUND, tl.loc('testImpactAndCCWontWork'), 1044, false);
             tl.warning(tl.loc('testImpactAndCCWontWork'));
         }
-
-        utils.Helper.publishEventToCi(AreaCodes.TOOLSINSTALLERCACHENOTFOUND, tl.loc('testImpactAndCCWontWork'), 1042, false);
-        tl.warning(tl.loc('testImpactAndCCWontWork'));
-    }
-
-    // get path to Microsoft.IntelliTrace.ProfilerProxy.dll (x86)
-    var x86ProfilerProxy = tl.findMatch(toolsInstallerConfiguration.vsTestPackageLocation, "**\\x86\\Microsoft.IntelliTrace.ProfilerProxy.dll");
-    if (x86ProfilerProxy && x86ProfilerProxy.length !== 0) {
-        toolsInstallerConfiguration.x86ProfilerProxyDLLLocation = x86ProfilerProxy[0];
-    } else {
-        utils.Helper.publishEventToCi(AreaCodes.TOOLSINSTALLERCACHENOTFOUND, tl.loc('testImpactAndCCWontWork'), 1044, false);
-        tl.warning(tl.loc('testImpactAndCCWontWork'));
     }
 
     return toolsInstallerConfiguration;

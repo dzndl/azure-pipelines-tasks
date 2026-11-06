@@ -4,6 +4,7 @@ import  * as semver from "semver"
 import * as publishTestResultsTool from './publishtestresultstool';
 import * as tl from 'azure-pipelines-task-lib/task';
 import * as tr from 'azure-pipelines-task-lib/toolrunner';
+import { RestClient } from 'typed-rest-client/RestClient';
 import * as ci from './cieventlogger';
 
 const MERGE_THRESHOLD = 100;
@@ -16,7 +17,12 @@ function isNullOrWhitespace(input: any) {
     return input.replace(/\s/g, '').length < 1;
 }
 
-function publish(testRunner, resultFiles, mergeResults, failTaskOnFailedTests, platform, config, runTitle, publishRunAttachments, testRunSystem) {
+function parseBooleanVariable(variableValue: string): boolean {
+    const normalizedValue = (variableValue || '').trim().toLowerCase();
+    return normalizedValue === 'true' || normalizedValue === '1';
+}
+
+function publish(testRunner, resultFiles, mergeResults, failTaskOnFailedTests, platform, config, runTitle, publishRunAttachments, testRunSystem , failTaskOnFailureToPublishResults, allowPtrToDetectTestRunRetryFiles) {
     var properties = <{ [key: string]: string }>{};
     properties['type'] = testRunner;
 
@@ -41,15 +47,55 @@ function publish(testRunner, resultFiles, mergeResults, failTaskOnFailedTests, p
     if(failTaskOnFailedTests){
         properties['failTaskOnFailedTests'] = failTaskOnFailedTests;
     }
+    if(failTaskOnFailureToPublishResults){
+        properties['failTaskOnFailureToPublishResults'] = failTaskOnFailureToPublishResults;
+    }
+    if(allowPtrToDetectTestRunRetryFiles){
+        properties['isDetectTestRunRetry'] = allowPtrToDetectTestRunRetryFiles;
+    }
     properties['testRunSystem'] = testRunSystem;
 
     tl.command('results.publish', properties, '');
 }
 
+async function isFeatureFlagEnabled(featureFlag: string): Promise<boolean> {
+    try {
+        const collectionUrl = tl.getVariable('System.TeamFoundationCollectionUri');
+        if (!collectionUrl) {
+            throw new Error('Collection URL is unavailable');
+        }
+
+        const token = tl.getEndpointAuthorizationParameter('SystemVssConnection', 'AccessToken', true);
+        if (!token) {
+            throw new Error('Collection access token is unavailable');
+        }
+
+        const featureFlagUrl = `${collectionUrl.replace(/\/+$/, '')}/_apis/FeatureFlags/${featureFlag}`;
+        const client = new RestClient('PublishTestResults', undefined, undefined, {
+            socketTimeout: 5000,
+            allowRetries: false,
+            allowRedirects: false,
+            proxy: tl.getHttpProxyConfiguration(featureFlagUrl),
+            cert: tl.getHttpCertConfiguration()
+        });
+        const response = await client.get<{ effectiveState?: string }>(featureFlagUrl, {
+            additionalHeaders: { Authorization: `Bearer ${token}` }
+        });
+        if (response.statusCode !== 200 || typeof response.result?.effectiveState !== 'string'
+            || !/^(on|off)$/i.test(response.result.effectiveState)) {
+            throw new Error('TFS feature flag state is unavailable');
+        }
+        return response.result.effectiveState.toLowerCase() === 'on';
+    } catch (err) {
+        tl.debug(`Unable to read TFS feature flag '${featureFlag}'. Retaining .NET SDK version telemetry.`);
+        return false;
+    }
+}
+
 function getDotNetVersion() {
     let dotnet: tr.ToolRunner;
     const dotnetPath = tl.which('dotnet', false);
-    
+
     if (dotnetPath){
         try {
             dotnet = tl.tool(dotnetPath);
@@ -72,6 +118,9 @@ async function run() {
         const testRunTitle = tl.getInput('testRunTitle');
         const publishRunAttachments = tl.getInput('publishRunAttachments');
         const failTaskOnFailedTests = tl.getInput('failTaskOnFailedTests');
+	    const failTaskOnMissingResultsFile: boolean = tl.getBoolInput('failTaskOnMissingResultsFile');
+        const failTaskOnFailureToPublishResults = tl.getInput('failTaskOnFailureToPublishResults');
+        const allowPtrToDetectTestRunRetryFiles = parseBooleanVariable(tl.getVariable('allowPtrToDetectTestRunRetryFiles'));
         let searchFolder = tl.getInput('searchFolder');
 
         tl.debug('testRunner: ' + testRunner);
@@ -82,6 +131,9 @@ async function run() {
         tl.debug('testRunTitle: ' + testRunTitle);
         tl.debug('publishRunAttachments: ' + publishRunAttachments);
         tl.debug('failTaskOnFailedTests: ' + failTaskOnFailedTests);
+	    tl.debug('failTaskOnMissingResultsFile: ' + failTaskOnMissingResultsFile);
+        tl.debug('failTaskOnFailureToPublishResults: ' + failTaskOnFailureToPublishResults);
+        tl.debug('allowPtrToDetectTestRunRetryFiles: ' + allowPtrToDetectTestRunRetryFiles);
 
         if (isNullOrWhitespace(searchFolder)) {
             searchFolder = tl.getVariable('System.DefaultWorkingDirectory');
@@ -111,9 +163,14 @@ async function run() {
         ci.addToConsolidatedCi('config', config);
         ci.addToConsolidatedCi('platform', platform);
         ci.addToConsolidatedCi('testResultsFilesCount', testResultsFilesCount);
+        ci.addToConsolidatedCi('failTaskOnMissingResultsFile', failTaskOnMissingResultsFile);
+        ci.addToConsolidatedCi('failTaskOnFailureToPublishResults', failTaskOnFailureToPublishResults);
+        ci.addToConsolidatedCi('allowPtrToDetectTestRunRetryFiles', allowPtrToDetectTestRunRetryFiles);
 
-        const dotnetVersion = getDotNetVersion();
-        ci.addToConsolidatedCi('dotnetVersion', dotnetVersion);
+        if (!await isFeatureFlagEnabled('TestManagement.PublishTestResultsTask.DisableDotNetVersionTelemetry')) {
+            const dotnetVersion = getDotNetVersion();
+            ci.addToConsolidatedCi('dotnetVersion', dotnetVersion);
+        }
 
         const forceMerge = testResultsFilesCount > MERGE_THRESHOLD;
         if (forceMerge) {
@@ -121,7 +178,11 @@ async function run() {
         }
 
         if (testResultsFilesCount === 0) {
-            tl.warning('No test result files matching ' + testResultsFiles + ' were found.');
+              if (failTaskOnMissingResultsFile) {
+                tl.setResult(tl.TaskResult.Failed, tl.loc('NoMatchingFilesFound', testResultsFiles));
+            } else {
+                tl.warning(tl.loc('NoMatchingFilesFound', testResultsFiles));
+            }
             ci.addToConsolidatedCi('noResultsFileFound', true);
         } else {
             const osType = tl.osType();
@@ -139,7 +200,8 @@ async function run() {
                     testRunTitle,
                     publishRunAttachments,
                     testRunner,
-                    TESTRUN_SYSTEM);
+                    TESTRUN_SYSTEM,
+                    failTaskOnFailureToPublishResults);
                 const exitCode = await testResultsPublisher.publishResultsThroughExe();
                 tl.debug("Exit code of TestResultsPublisher: " + exitCode);
 
@@ -152,7 +214,9 @@ async function run() {
                         config,
                         testRunTitle,
                         publishRunAttachments,
-                        TESTRUN_SYSTEM);
+                        TESTRUN_SYSTEM,
+                        failTaskOnFailureToPublishResults,
+                        allowPtrToDetectTestRunRetryFiles);
                 } else if (exitCode === 40000) {
                     // The exe returns with exit code: 40000 if there are test failures found and failTaskOnFailedTests is true
                     ci.addToConsolidatedCi('failedTestsInRun', true);
@@ -172,7 +236,9 @@ async function run() {
                     config,
                     testRunTitle,
                     publishRunAttachments,
-                    TESTRUN_SYSTEM);
+                    TESTRUN_SYSTEM,
+                    failTaskOnFailureToPublishResults,
+                    allowPtrToDetectTestRunRetryFiles);
             }
         }
         tl.setResult(tl.TaskResult.Succeeded, '');

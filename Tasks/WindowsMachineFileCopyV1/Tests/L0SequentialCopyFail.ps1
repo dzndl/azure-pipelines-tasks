@@ -2,6 +2,7 @@
 param()
 
 . $PSScriptRoot\..\..\..\Tests\lib\Initialize-Test.ps1
+. $PSScriptRoot\..\..\Common\Sanitizer\ArgumentsSanitizer.ps1
 . $PSScriptRoot\MockVariable.ps1 -Force
 . $PSScriptRoot\MockHelper.ps1 -Force
 
@@ -10,6 +11,8 @@ $invalidEnvironmentWithNoResource = "invalidEnvironmentWithNoResource"
 
 Register-Mock Get-EnvironmentProperty { return $validResources } -ParametersEvaluator {$EnvironmentName -eq $invalidEnvironmentNameForFailCopy}
 Register-Mock Get-EnvironmentResources { return $resourceFailForCopy } -ParametersEvaluator {$EnvironmentName -eq $invalidEnvironmentNameForFailCopy}
+Register-Mock Get-SanitizerCallStatus { return $false }
+Register-Mock Get-SanitizerActivateStatus { return $false }
 
 Unregister-Mock Invoke-Command
 Register-Mock Invoke-Command { throw "$FailedCopyError" }

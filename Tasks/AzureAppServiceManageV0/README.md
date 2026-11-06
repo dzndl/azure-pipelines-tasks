@@ -4,6 +4,14 @@
 
 The Azure App Service Management task is used to Start/Stop/Restart App Service, Swap Slot, Install Extentions, Enable [Continuous Monitoring](https://go.microsoft.com/fwlink/?linkid=859946) or Start/Stop all continuous WebJobs on an [Azure App Service](https://azure.microsoft.com/en-in/documentation/articles/app-service-web-overview/). The task works with the [Azure Resource Manager APIs](https://msdn.microsoft.com/en-us/library/azure/dn790568.aspx) only.
 
+## External output
+
+Messages containing Kudu WebJob names and installed extension IDs use external-output
+filtering. The shared `EnableVsoCommandBlockingRMTasks` pipeline feature
+enables blocking of VSO command markers. When disabled or unset, messages remain
+unchanged and command-name-only telemetry is emitted. WebJob names passed to Kudu
+and extension output variables are not modified.
+
 ## Contact Information
 
 Please report a problem at [Developer Community Forum](https://developercommunity.visualstudio.com/spaces/21/index.html) if you are facing problems in making this task work.  You can also share feedback about the task like, what more functionality should be added to the task, what other tasks you would like to have, at the same place.
@@ -52,6 +60,8 @@ The task is used to manage an existing Azure App Service. The mandatory fields a
 * **Application Insights Resource Name:** This parameter is visible when "Enable Continuous Monitoring" action is selected. Select the name of Application Insights resource where continuous monitoring data will be recorded. If your application insights resource is not listed here and you want to create a new resource, click on +new button. Once the resource is created on Azure Portal, come back here and click on refresh button.
 
 * **Install Extensions:** The task can also be used to [install site extensions](https://www.siteextensions.net/packages) on the App Service. Site Extensions run on Microsoft Azure App Service. You can install set of tools as site extension such as [PHP Composer](https://www.siteextensions.net/packages/ComposerExtension/) or the right version of [Python](https://www.siteextensions.net/packages?q=Python). The App Service will be restarted to make sure latest changes take effect. Please note that extensions are only supported only for Web App on Windows.
+
+  - **Versioned Extension Support (Preview):** You can now specify extensions as `name@version` (e.g., `PythonExtension@3.9.0`). If a version is specified, that exact version will be installed. If you specify `latest` as the version, the latest available version will be installed (in case it already has the latest version, installation will be skipped). If no version is specified, the extension will only be installed if it is not already present. Example: `MyExtension@1.2.3, OtherExtension@latest, LegacyExtension`.
 
 ## Output variable
 When provided a variable name, the variable will be populated with the the local installation path of the selected extension. In case of multiple extensions selected for installation, provide comma separated list of variables that saves the local path for each of the selected extension in the order it appears in the Install Extension field. Example: outputVariable1, outputVariable2

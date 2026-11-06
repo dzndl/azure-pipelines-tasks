@@ -1,8 +1,8 @@
 "use strict";
 
 import * as tl from "azure-pipelines-task-lib/task";
-import ContainerConnection from "azure-pipelines-tasks-docker-common-v2/containerconnection";
-import * as dockerCommandUtils from "azure-pipelines-tasks-docker-common-v2/dockercommandutils";
+import ContainerConnection from "azure-pipelines-tasks-docker-common/containerconnection";
+import * as dockerCommandUtils from "azure-pipelines-tasks-docker-common/dockercommandutils";
 
 export function run(connection: ContainerConnection,  outputUpdate: (data: string) => any): any {
     var command = connection.createCommand();
@@ -16,5 +16,5 @@ export function run(connection: ContainerConnection,  outputUpdate: (data: strin
     var commandArguments = dockerCommandUtils.getCommandArguments(tl.getInput("arguments", false));
 
     command.line(commandArguments);
-    return connection.execCommand(command);
+    return connection.execCommand(command, dockerCommandUtils.createSanitizedExecOptions());
 }

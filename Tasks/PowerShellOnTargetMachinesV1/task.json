@@ -13,8 +13,8 @@
     "author": "Microsoft Corporation",
     "version": {
         "Major": 1,
-        "Minor": 0,
-        "Patch": 53
+        "Minor": 283,
+        "Patch": 0
     },
     "minimumAgentVersion": "1.104.0",
     "groups": [
@@ -29,6 +29,9 @@
             "isExpanded": false
         }
     ],
+    "deprecated": true,
+    "retiredDate": "2026-11-24",
+    "deprecationMessage": "The PowerShellOnTargetMachines@1 task is deprecated, please use a newer version of the PowerShellOnTargetMachines task",
     "inputs": [
         {
             "name": "EnvironmentName",

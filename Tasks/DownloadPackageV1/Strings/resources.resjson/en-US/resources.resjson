@@ -26,13 +26,18 @@
   "loc.messages.StartingDownloadOfPackage": "Starting download of package %s to location %s",
   "loc.messages.ExtractingPackage": "Extracting package %s to directory %s",
   "loc.messages.PackageTypeNotSupported": "Only Nuget, Python, Universal, Npm, and Maven packages types can be downloaded using this task.",
+  "loc.messages.SkippingFileWithNoContent": "Skipping file %s as no supported content could be found",
   "loc.messages.ExtractionFailed": "Failed to extract package with error %s",
   "loc.messages.RetryingOperation": "Operation failed, waiting %sms before retrying, retries remaining: %s",
   "loc.messages.RedirectUrlError": "Unable to get redirect URL with error %.",
   "loc.messages.UnsupportedArchiveType": "Unsupported archive type: %s",
+  "loc.messages.InvalidPackageFilePath": "Package file path '%s' must be relative to and remain within the destination directory.",
+  "loc.messages.InvalidPackageFileLink": "Package file path '%s' cannot contain a symbolic link or junction beneath the destination directory.",
+  "loc.messages.InvalidPackageDestinationLink": "Package destination path '%s' cannot contain a symbolic link or junction.",
   "loc.messages.Error_UnexpectedErrorArtifactToolDownload": "An unexpected error occurred while trying to download the package. Exit code(%s) and error(%s)",
   "loc.messages.Info_ResolvedToolFromCache": "Resolved from tool cache: %s",
   "loc.messages.Info_DownloadingArtifactTool": "Downloading artifact tool from %s",
   "loc.messages.Info_Downloading": "Downloading package: %s, version: %s using feed id: %s, project: %s",
-  "loc.messages.Info_UsingArtifactToolDownload": "Using artifact tool to download the package"
+  "loc.messages.Info_UsingArtifactToolDownload": "Using artifact tool to download the package",
+  "loc.messages.Info_ResolvedLatestVersion": "Resolved latest package version: %s"
 }

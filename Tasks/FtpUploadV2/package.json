@@ -3,6 +3,10 @@
   "version": "2.0.0",
   "description": "FTP Upload Task",
   "main": "ftpuploadtask.js",
+  "scripts": {
+    "build": "node ../../make.js build --task FtpUploadV2",
+    "serverBuild": "node ../../make.js serverBuild --task FtpUploadV2"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Microsoft/azure-pipelines-tasks.git"
@@ -14,8 +18,12 @@
   },
   "homepage": "https://github.com/Microsoft/azure-pipelines-tasks#readme",
   "dependencies": {
-    "@types/node": "^8.0.0",
-    "azure-pipelines-task-lib": "^2.8.0",
-    "basic-ftp": "^3.4.3"
+    "@types/mocha": "^9.1.1",
+    "@types/node": "^24.10.0",
+    "azure-pipelines-task-lib": "^5.280.3",
+    "basic-ftp": "5.3.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
   }
 }

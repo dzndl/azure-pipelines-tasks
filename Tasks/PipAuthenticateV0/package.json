@@ -1,25 +1,34 @@
 {
-    "name": "pipauthenticate",
-    "version": "0.1.0",
-    "description": "Authenticate pip client.",
-    "main": "pipAuthenticateMain.js",
-    "scripts": {
-        "test": "echo \"Error: no test specified\" && exit 1"
-    },
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/Microsoft/azure-pipelines-tasks.git"
-    },
-    "author": "Microsoft Corporation",
-    "license": "MIT",
-    "bugs": {
-        "url": "https://github.com/Microsoft/azure-pipelines-tasks/issues"
-    },
-    "homepage": "https://github.com/Microsoft/azure-pipelines-tasks#readme",
-    "dependencies": {
-        "azure-pipelines-task-lib": "2.8.0",
-        "packaging-common": "file:../../_build/Tasks/Common/packaging-common-1.0.1.tgz",
-        "typed-rest-client": "^0.11.0",
-        "utility-common": "file:../../_build/Tasks/Common/utility-common-1.0.2.tgz"
-    }
+  "name": "pipauthenticate",
+  "version": "0.1.0",
+  "description": "Authenticate pip client.",
+  "main": "pipAuthenticateMain.js",
+  "scripts": {
+    "build": "node ../../make.js build --task PipAuthenticateV0",
+    "serverBuild": "node ../../make.js serverBuild --task PipAuthenticateV0",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Microsoft/azure-pipelines-tasks.git"
+  },
+  "author": "Microsoft Corporation",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Microsoft/azure-pipelines-tasks/issues"
+  },
+  "homepage": "https://github.com/Microsoft/azure-pipelines-tasks#readme",
+  "dependencies": {
+    "@types/mocha": "^5.2.7",
+    "@types/node": "^24.10.0",
+    "@types/uuid": "^8.3.0",
+    "azure-pipelines-task-lib": "^5.281.2",
+    "azure-pipelines-tasks-packaging-common": "^3.281.0",
+    "azure-pipelines-tasks-utility-common": "^3.281.0",
+    "azure-pipelines-tool-lib": "^2.281.0",
+    "typed-rest-client": "^3.1.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
 }

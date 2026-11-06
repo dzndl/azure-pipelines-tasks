@@ -17,7 +17,7 @@
   "author": "Microsoft Corporation",
   "version": {
     "Major": 1,
-    "Minor": 187,
+    "Minor": 283,
     "Patch": 0
   },
   "minimumAgentVersion": "2.104.1",
@@ -116,17 +116,29 @@
         "EditableOptions": "True"
       },
       "options": {
-        "DOTNET|2.2": "DOTNET|2.2 (functionapp v2)",
-        "DOTNET|3.1": "DOTNET|3.1 (functionapp v3)",
-        "JAVA|8": "JAVA|8 (functionapp v2/v3)",
-        "JAVA|11": "JAVA|11  (functionapp v3)",
-        "NODE|8": "NODE|8 (functionapp v2)",
-        "NODE|10": "NODE|10 (functionapp v2/v3)",
-        "NODE|12": "NODE|12 (functionapp v3)",
-        "NODE|14": "NODE|14 (functionapp v3)",
-        "PYTHON|3.6": "PYTHON|3.6 (functionapp v2/v3)",
-        "PYTHON|3.7": "PYTHON|3.7 (functionapp v2/v3)",
-        "PYTHON|3.8": "PYTHON|3.8 (functionapp v3)"
+        "DOTNET|6.0": "DOTNET|6.0",
+        "DOTNET-ISOLATED|6.0": "DOTNET-ISOLATED|6.0",
+        "DOTNET-ISOLATED|7.0": "DOTNET-ISOLATED|7.0",
+        "DOTNET-ISOLATED|8.0": "DOTNET-ISOLATED|8.0",
+        "DOTNET-ISOLATED|9.0": "DOTNET-ISOLATED|9.0",
+        "DOTNET-ISOLATED|10.0": "DOTNET-ISOLATED|10.0",
+        "JAVA|8": "JAVA|8",
+        "JAVA|11": "JAVA|11",
+        "JAVA|17": "JAVA|17",
+        "JAVA|21": "JAVA|21",
+        "JAVA|25": "JAVA|25",
+        "NODE|14": "NODE|14",
+        "NODE|16": "NODE|16",
+        "NODE|18": "NODE|18",
+        "NODE|20": "NODE|20",
+        "NODE|22": "NODE|22",
+        "NODE|24": "NODE|24",
+        "PYTHON|3.8": "PYTHON|3.8",
+        "PYTHON|3.9": "PYTHON|3.9",
+        "PYTHON|3.10": "PYTHON|3.10",
+        "PYTHON|3.11": "PYTHON|3.11",
+        "PYTHON|3.12": "PYTHON|3.12",
+        "PYTHON|3.13": "PYTHON|3.13"
       },
       "visibleRule": "appType = functionAppLinux",
       "helpMarkDown": "ms-resource:loc.input.help.runtimeStack"
@@ -187,7 +199,7 @@
       "options": {
         "auto": "Auto-detect",
         "zipDeploy": "Zip Deploy",
-        "runFromPackage": "Run From Package"
+        "runFromPackage": "Zip Deploy with Run From Package"
       },
       "helpMarkDown": "ms-resource:loc.input.help.deploymentMethod"
     }
@@ -228,8 +240,17 @@
   ],
   "instanceNameFormat": "ms-resource:loc.instanceNameFormat",
   "execution": {
-    "Node10": {
-      "target": "azurermwebappdeployment.js"
+    "Node16": {
+      "target": "azurermwebappdeployment.js",
+      "argumentFormat": ""
+    },
+    "Node20_1": {
+      "target": "azurermwebappdeployment.js",
+      "argumentFormat": ""
+    },
+    "Node24": {
+      "target": "azurermwebappdeployment.js",
+      "argumentFormat": ""
     }
   },
   "messages": {

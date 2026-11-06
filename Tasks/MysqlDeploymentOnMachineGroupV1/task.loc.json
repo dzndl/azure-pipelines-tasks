@@ -16,12 +16,15 @@
   "author": "Microsoft Corporation",
   "version": {
     "Major": 1,
-    "Minor": 184,
-    "Patch": 0
+    "Minor": 283,
+    "Patch": 1
   },
   "demands": [],
   "minimumAgentVersion": "1.100.0",
   "groups": [],
+  "deprecated": true,
+  "retiredDate": "2026-11-24",
+  "deprecationMessage": "The MysqlDeploymentOnMachineGroup@1 task is deprecated",
   "inputs": [
     {
       "name": "TaskNameSelector",
@@ -102,6 +105,14 @@
   "execution": {
     "Node10": {
       "target": "mysqldeploy.js"
+    },
+    "Node16": {
+      "target": "mysqldeploy.js",
+      "argumentFormat": ""
+    },
+    "Node20_1": {
+      "target": "mysqldeploy.js",
+      "argumentFormat": ""
     }
   },
   "messages": {
@@ -114,10 +125,12 @@
     "MysqlTaskParameterCannotBeEmpty": "ms-resource:loc.messages.MysqlTaskParameterCannotBeEmpty",
     "ToolPathCannotBeNull": "ms-resource:loc.messages.ToolPathCannotBeNull",
     "SqlExecutionException": "ms-resource:loc.messages.SqlExecutionException",
+    "InvalidSqlFilePath": "ms-resource:loc.messages.InvalidSqlFilePath",
     "CallbackCannotBeNull": "ms-resource:loc.messages.CallbackCannotBeNull",
     "UnableToCreateDatabaseException": "ms-resource:loc.messages.UnableToCreateDatabaseException",
     "WindowMysqlClientMissingError": "ms-resource:loc.messages.WindowMysqlClientMissingError",
     "LinuxMysqlClientMissingError": "ms-resource:loc.messages.LinuxMysqlClientMissingError",
-    "Nopackagefoundwithspecifiedpattern": "ms-resource:loc.messages.Nopackagefoundwithspecifiedpattern"
+    "Nopackagefoundwithspecifiedpattern": "ms-resource:loc.messages.Nopackagefoundwithspecifiedpattern",
+    "InvalidDatabaseName": "ms-resource:loc.messages.InvalidDatabaseName"
   }
 }

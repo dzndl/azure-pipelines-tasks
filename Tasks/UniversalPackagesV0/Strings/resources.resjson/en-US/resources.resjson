@@ -1,6 +1,6 @@
 {
   "loc.friendlyName": "Universal packages",
-  "loc.helpMarkDown": "[Learn more about this task](https://aka.ms/UniversalPackagesTask)",
+  "loc.helpMarkDown": "[Learn more about this task](https://docs.microsoft.com/azure/devops/pipelines/tasks/package/universal-packages)",
   "loc.description": "Download or publish Universal Packages",
   "loc.instanceNameFormat": "Universal $(command)",
   "loc.group.displayName.packageDownloadDetails": "Feed & package details",
@@ -59,6 +59,7 @@
   "loc.messages.PackagesPublishedSuccessfully": "Packages were published successfully",
   "loc.messages.PackagesFailedToPublish": "Packages failed to publish",
   "loc.messages.UnknownFeedType": "Unknown feed type '%s'",
+  "loc.messages.Error_NoVersionOptionSpecifiedForPublish": "Invalid versionOption/versionPublishSelector provided. Must be set to 'major', 'minor', 'patch', or 'custom'",
   "loc.messages.Error_NoSourceSpecifiedForPublish": "No external source was specified for publish",
   "loc.messages.Error_NoSourceSpecifiedForDownload": "No external source was specified for download",
   "loc.messages.Error_UnexpectedErrorArtifactTool": "An unexpected error occurred while trying to push the package. Exit code(%s) and error(%s)",
@@ -80,12 +81,15 @@
   "loc.messages.Info_ResolvePackageVersionRoute": "Resolved get highest package version route: %s",
   "loc.messages.Info_RetrievingArtifactToolUri": "Retrieving artifact tool from: %s",
   "loc.messages.Info_ArtifactToolPath": "Artifact tool path: %s",
+  "loc.messages.Info_ArtifactToolPathResolvedFromCache": "Artifact tool already available, skipping download.",
   "loc.messages.FailedToGetPackageMetadata": "Failed to get package metadata.",
   "loc.messages.FailedToGetArtifactTool": "Failed to get artifact tool. %s",
+  "loc.messages.Error_ArtifactToolPathNotSet": "Artifact tool path was not set by pre-job execution.",
   "loc.messages.Error_UnexpectedErrorFailedToGetToolMetadata": "Failed to get artifact tool metadata from source url %s",
   "loc.messages.FailedToGetLatestPackageVersion": "Failed to get package versions",
   "loc.messages.Warn_CredentialsNotFound": "Could not determine credentials to use for Universal Packages",
   "loc.messages.Warning_SessionCreationFailed": "Could not create provenance session: %s",
   "loc.messages.Error_UniversalPackagesNotSupportedOnPrem": "Universal Packages are not supported in Azure DevOps Server.",
-  "loc.messages.Error_ProcessorArchitectureNotSupported": "Universal Packages require an x64 agent."
+  "loc.messages.Error_ProcessorArchitectureNotSupported": "Universal Packages require an x64 agent.",
+  "loc.messages.Warning_UnsupportedServiceConnectionAuth": "The service connection does not use a supported authentication method. Please use a service connection with personal access token based auth."
 }

@@ -4,6 +4,8 @@
   "description": "Visual Studio App Center Distribute Task",
   "main": "appcenterdistribute.js",
   "scripts": {
+    "build": "node ../../make.js build --task AppCenterDistributeV3",
+    "serverBuild": "node ../../make.js serverBuild --task AppCenterDistributeV3",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -17,10 +19,18 @@
   },
   "homepage": "https://github.com/Microsoft/azure-pipelines-tasks",
   "dependencies": {
-    "appcenter-file-upload-client-node": "1.0.0",
-    "azure-storage": "^2.10.3",
-    "jszip": "^3.1.2",
-    "request": "2.87.0",
-    "vsts-task-lib": "2.0.5"
+    "@azure/storage-blob": "^12.31.0",
+    "@types/mocha": "^5.2.7",
+    "@types/node": "^24.10.0",
+    "appcenter-file-upload-client-node": "^1.2.11",
+    "azure-pipelines-task-lib": "^5.281.0",
+    "jszip": "^3.10.0",
+    "typed-rest-client": "^3.1.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  },
+  "overrides": {
+    "basic-ftp": "5.3.0"
   }
 }

@@ -1,6 +1,6 @@
 import * as tl from 'azure-pipelines-task-lib/task';
 import * as path from "path";
-import { WebResponse } from 'utility-common-v2/restutilities';
+import { WebResponse } from 'azure-pipelines-tasks-utility-common/restutilities';
 import { ContainerRegistry } from "./containerregistry";
 import { TestResultPublisher, TestSummary } from "./testresultspublisher";
 import { TestRunner } from "./testrunner";
@@ -39,7 +39,8 @@ async function run() {
         let image;
         if (endpointId) {
             // Establishing registry connection and pulling the container.
-            let containerRegistry = new ContainerRegistry(endpointId);
+            let containerRegistry = new ContainerRegistry();
+            await containerRegistry.open(endpointId);
             tl.debug(`Successfully finished docker login`);
             image = `${containerRegistry.getQualifiedImageName(repository, tag)}`;
             tl.debug(`Image: ${image}`);

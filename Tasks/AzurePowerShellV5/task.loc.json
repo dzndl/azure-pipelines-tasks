@@ -17,8 +17,8 @@
   "author": "Microsoft Corporation",
   "version": {
     "Major": 5,
-    "Minor": 184,
-    "Patch": 1
+    "Minor": 283,
+    "Patch": 0
   },
   "releaseNotes": "ms-resource:loc.releaseNotes",
   "groups": [
@@ -156,6 +156,16 @@
       "groupName": "advanced"
     },
     {
+      "name": "validateScriptSignature",
+      "type": "boolean",
+      "label": "ms-resource:loc.input.label.validateScriptSignature",
+      "required": false,
+      "defaultValue": "false",
+      "helpMarkDown": "ms-resource:loc.input.help.validateScriptSignature",
+      "groupName": "advanced",
+      "visibleRule": "ScriptType = FilePath"
+    },
+    {
       "name": "workingDirectory",
       "type": "filePath",
       "label": "ms-resource:loc.input.label.workingDirectory",
@@ -173,7 +183,15 @@
         "windows"
       ]
     },
+    "Node16": {
+      "target": "azurepowershell.js",
+      "argumentFormat": ""
+    },
     "Node10": {
+      "target": "azurepowershell.js",
+      "argumentFormat": ""
+    },
+    "Node20_1": {
       "target": "azurepowershell.js",
       "argumentFormat": ""
     }
@@ -182,11 +200,13 @@
     "GeneratingScript": "ms-resource:loc.messages.GeneratingScript",
     "JS_FormattedCommand": "ms-resource:loc.messages.JS_FormattedCommand",
     "InvalidScriptArguments0": "ms-resource:loc.messages.InvalidScriptArguments0",
+    "ScriptArgsSanitized": "ms-resource:loc.messages.ScriptArgsSanitized",
     "InvalidScriptPath0": "ms-resource:loc.messages.InvalidScriptPath0",
     "InvalidAzurePsVersion": "ms-resource:loc.messages.InvalidAzurePsVersion",
     "JS_ExitCode": "ms-resource:loc.messages.JS_ExitCode",
     "JS_Stderr": "ms-resource:loc.messages.JS_Stderr",
     "ExpiredServicePrincipal": "ms-resource:loc.messages.ExpiredServicePrincipal",
-    "PS_ExitCode": "ms-resource:loc.messages.PS_ExitCode"
+    "PS_ExitCode": "ms-resource:loc.messages.PS_ExitCode",
+    "Az_LowerVersionWarning": "ms-resource:loc.messages.Az_LowerVersionWarning"
   }
 }

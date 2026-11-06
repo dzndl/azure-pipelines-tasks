@@ -4,67 +4,131 @@ import tmrm = require('azure-pipelines-task-lib/mock-run');
 import tl = require('azure-pipelines-task-lib');
 import * as path from 'path';
 import { MysqlClient } from '../sql/MysqlClient';
+import { Utility } from '../operations/MysqlUtiliy';
 import { FirewallConfiguration } from '../models/FirewallConfiguration';
+import { isValidDatabaseName } from '../models/AzureMysqlTaskParameter';
 
 describe('AzureMySqlDeployment Suite', function() {
 
     this.timeout(60000);
 
-    it('AzureMySqlDeployment MysqlServerOperationsL0Tests', (done: MochaDone) => {
+    it('AzureMySqlDeployment MysqlServerOperationsL0Tests', async () => {
         let tp = path.join(__dirname, 'MysqlServerOperationsL0Tests.js');
         let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
-        try {
-            tr.run();
-            assert(tr.stdOutContained('MysqlServerOperationsTests.MysqlServerFromServerName should has passed.') , 'Should have printed: MysqlServerOperationsTests.MysqlServerFromServerName should has passed.');
-            assert(tr.stdOutContained('MysqlServerOperationsTests.MysqlServerFromServerName should have failed due to without id in mysql server.') , 'Should have printed: MysqlServerOperationsTests.MysqlServerFromServerName should have failed due to without id in mysql server.');
-            assert(tr.stdOutContained('MysqlServerOperationsTests.MysqlServerFromServerName should have failed due to invalid id in mysql server.') , 'Should have printed: MysqlServerOperationsTests.MysqlServerFromServerName should have failed due to invalid id in mysql server.');
-            assert(tr.stdOutContained('MysqlServerOperationsTests.MysqlServerFromServerName should have failed due to invalid mysql server name.') , 'Should have printed: MysqlServerOperationsTests.MysqlServerFromServerName should have failed due to invalid mysql server name.');
-            done();
-        }
-        catch(error) {
-            done(error);
-        }
+        await tr.runAsync();
+        assert(tr.stdOutContained('MysqlServerOperationsTests.MysqlServerFromServerName should have passed.') , 'Should have printed: MysqlServerOperationsTests.MysqlServerFromServerName should have passed.');
+        assert(tr.stdOutContained('MysqlServerOperationsTests.MysqlServerFromServerName should have failed due to without id in mysql server.') , 'Should have printed: MysqlServerOperationsTests.MysqlServerFromServerName should have failed due to without id in mysql server.');
+        assert(tr.stdOutContained('MysqlServerOperationsTests.MysqlServerFromServerName should have failed due to invalid id in mysql server.') , 'Should have printed: MysqlServerOperationsTests.MysqlServerFromServerName should have failed due to invalid id in mysql server.');
+        assert(tr.stdOutContained('MysqlServerOperationsTests.MysqlServerFromServerName should have failed due to invalid mysql server name.') , 'Should have printed: MysqlServerOperationsTests.MysqlServerFromServerName should have failed due to invalid mysql server name.');
     });
 
-    it('AzureMySqlDeployment FirewallOperationTests', (done: MochaDone) => {
+    it('AzureMySqlDeployment FirewallOperationTests', async () => {
         let tp = path.join(__dirname, 'FirewallOperationTests.js');
         let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
-        try {
-            tr.run();
-            assert(tr.stdOutContained('FirewallOperationsL0Tests.addFirewallRuleTest should have succeeded.'), 'Should have printed: FirewallOperationsL0Tests.addFirewallRuleTest should have succeeded.');
-            assert(tr.stdOutContained('FirewallOperationsL0Tests.deleteFirewallRuleTest should have succeeded.'), 'Should have printed: FirewallOperationsL0Tests.deleteFirewallRuleTest should have succeeded.');
-            done();
-        }
-        catch(error) {
-            done(error);
-        }
+        await tr.runAsync();
+        assert(tr.stdOutContained('FirewallOperationsL0Tests.addFirewallRuleTest should have succeeded.'), 'Should have printed: FirewallOperationsL0Tests.addFirewallRuleTest should have succeeded.');
+        assert(tr.stdOutContained('FirewallOperationsL0Tests.deleteFirewallRuleTest should have succeeded.'), 'Should have printed: FirewallOperationsL0Tests.deleteFirewallRuleTest should have succeeded.');
     });
 
-    it('AzureMySqlDeployment ToolPathOperationTests', (done: MochaDone) => {
+    it('AzureMySqlDeployment ToolPathOperationTests', async () => {
         let tp = path.join(__dirname, 'ToolPathOperationTests.js');
         let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
-        try {
-            tr.run();
-            assert(tr.stdOutContained('ToolPathOperationsL0Tests.getInstalledPathOfMysqlForLinux should has passed.'), 'Should have printed: ToolPathOperationsL0Tests.getInstalledPathOfMysqlForLinux should has passed.');
-            done();
-        }
-        catch(error) {
-            done(error);
-        }
+        await tr.runAsync();
+        assert(tr.stdOutContained('ToolPathOperationsL0Tests.getInstalledPathOfMysqlForLinux should have passed.'), 'Should have printed: ToolPathOperationsL0Tests.getInstalledPathOfMysqlForLinux should have passed.');
     });
     
-    it('AzureMySqlDeployment MysqlClient', (done: MochaDone) => {
+    it('AzureMySqlDeployment MysqlClient', async () => {
         let tp = path.join(__dirname, 'MysqlClientTests.js');
         let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        assert(tr.stdOutContained('MysqlClientL0Tests.getFirewallConfiguration should have passed.'), 'Should have printed: MysqlClientL0Tests.getFirewallConfiguration should have passed.');
+        assert(tr.stdOutContained('MysqlClientL0Tests.executeSqlCommand should have passed'), 'Should have printed: MysqlClientL0Tests.executeSqlCommand should have passed.');
+    });
+
+    it('AzureMySqlDeployment DatabaseName validation', () => {
+        assert.strictEqual(isValidDatabaseName('database_name-1$'), true);
+        assert.strictEqual(isValidDatabaseName('数据库_name-1$'), true);
+        [
+            'database.invalid',
+            'database name',
+            'database`name',
+            "database'name",
+            'database&name',
+            'database|name',
+            'database$(neutral)',
+            'database\rname',
+            'database\nname',
+            'database\r',
+            'database\n',
+            'database\uD800name',
+            'database\uDC00name',
+            'database😀name'
+        ].forEach((databaseName) => assert.strictEqual(isValidDatabaseName(databaseName), false));
+    });
+
+    async function runInvalidDatabaseNameTask(featureEnabled: boolean): Promise<ttm.MockTestRunner> {
+        const featureEnvironmentVariable = 'DISTRIBUTEDTASK_TASKS_ENABLEAZUREMYSQLDEPLOYMENTDATABASENAMEVALIDATION';
+        const previousFeatureValue = process.env[featureEnvironmentVariable];
+
         try {
-            tr.run();
-            assert(tr.stdOutContained('MysqlClientL0Tests.getFirewallConfiguration should has passed.'), 'Should have printed: MysqlClientL0Tests.getFirewallConfiguration should has passed.');
-            assert(tr.stdOutContained('MysqlClientL0Tests.executeSqlCommand should has passed'), 'Should have printed: MysqlClientL0Tests.executeSqlCommand should has passed.');
-            done();
+            process.env[featureEnvironmentVariable] = featureEnabled ? 'true' : 'false';
+            const tp = path.join(__dirname, 'L0InvalidDatabaseName.js');
+            const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+            await tr.runAsync();
+            return tr;
         }
-        catch(error) {
-            done(error);
+        finally {
+            if (previousFeatureValue === undefined) {
+                delete process.env[featureEnvironmentVariable];
+            }
+            else {
+                process.env[featureEnvironmentVariable] = previousFeatureValue;
+            }
+        }
+    }
+
+    it('AzureMySqlDeployment validates DatabaseName before mysql execution when enabled', async () => {
+        const tr = await runInvalidDatabaseNameTask(true);
+
+        assert.strictEqual(tr.failed, true, 'Task should fail when validation is enabled.');
+        assert.strictEqual(tr.stdOutContained('loc_mock_InvalidDatabaseName'), true, 'Task should report the DatabaseName validation error.');
+        assert.strictEqual(tr.stdOutContained('MYSQL_EXECUTION_REACHED'), false, 'Task should validate DatabaseName before mysql execution.');
+    });
+
+    it('AzureMySqlDeployment preserves DatabaseName baseline behavior when disabled', async () => {
+        const tr = await runInvalidDatabaseNameTask(false);
+
+        assert.strictEqual(tr.failed, false, 'Task should retain baseline behavior when validation is disabled.');
+        assert.strictEqual(tr.stdOutContained('loc_mock_InvalidDatabaseName'), false, 'Task should not report the gated validation error.');
+        assert.strictEqual(tr.stdOutContained('MYSQL_EXECUTION_REACHED'), true, 'Task should proceed to mysql execution when validation is disabled.');
+    });
+
+    it('validateSqlFilePath allows unsafe path when the validation is disabled by feature flag', () => {
+        const featureEnvironmentVariable = 'DISTRIBUTEDTASK_TASKS_AZUREMYSQLDEPLOYMENT_DISABLESQLFILEPATHVALIDATION';
+        const previousFeatureValue = process.env[featureEnvironmentVariable];
+        try {
+            process.env[featureEnvironmentVariable] = 'true';
+            const p = 'a;b.sql';
+            assert.strictEqual(Utility.validateSqlFilePath(p), p);
+        }
+        finally {
+            if (previousFeatureValue === undefined) {
+                delete process.env[featureEnvironmentVariable];
+            }
+            else {
+                process.env[featureEnvironmentVariable] = previousFeatureValue;
+            }
         }
     });
 
+    it('validateSqlFilePath accepts ordinary paths', () => {
+        const p = '/home/vsts/work/1/s/db/migrate_01.sql';
+        assert.strictEqual(Utility.validateSqlFilePath(p), p);
+    });
+
+    ['x"; -h evil.example -e "SELECT 1 -- .sql', "x'.sql", 'a;b.sql', 'a`b.sql', 'a\nb.sql', 'a\rb.sql', 'a\0b.sql'].forEach((bad) => {
+        it('validateSqlFilePath rejects unsafe path ' + JSON.stringify(bad), () => {
+            assert.throws(() => Utility.validateSqlFilePath(bad), /InvalidSqlFilePath/);
+        });
+    });
 });

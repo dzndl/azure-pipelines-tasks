@@ -1,7 +1,7 @@
 {
   "loc.friendlyName": "Programme d'installation de NuGet",
-  "loc.helpMarkDown": "[Plus d'informations](https://go.microsoft.com/fwlink/?LinkID=613747)",
-  "loc.description": "Installe ou restaure les packages NuGet manquants",
+  "loc.helpMarkDown": "[Plus d'informations](https://docs.microsoft.com/azure/devops/pipelines/tasks/package/nuget)",
+  "loc.description": "Installe ou restaure les packages NuGet manquants. Utilisez la tâche NuGetAuthenticate@0 pour accéder aux dernières fonctionnalités.",
   "loc.instanceNameFormat": "NuGet $(restoreMode) $(solution)",
   "loc.group.displayName.advanced": "Avancé",
   "loc.input.label.solution": "Chemin de la solution ou de packages.config",
@@ -42,5 +42,6 @@
   "loc.messages.NGCommon_RemovingSources": "Préparation de la définition des informations d'identification dans NuGet.config",
   "loc.messages.NGCommon_AddingSources": "Définition des informations d'identification dans NuGet.config",
   "loc.messages.NGCommon_NoSourcesFoundInConfig": "Sources de package introuvables dans le fichier NuGet.config sur %s",
-  "loc.messages.NGCommon_UnabletoDetectNuGetVersion": "Version NuGet inconnue sélectionnée."
+  "loc.messages.NGCommon_UnabletoDetectNuGetVersion": "Version NuGet inconnue sélectionnée.",
+  "loc.messages.DeprecatedTask": "Cette tâche est déconseillée. Veuillez utiliser l'option « restauration » ou « personnalisée » de NuGetCommand@2 https://learn.microsoft.com/en-us/azure/devops/pipelines/tasks/reference/nuget-command-v2"
 }

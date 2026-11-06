@@ -6,7 +6,7 @@ import tl = require("azure-pipelines-task-lib/task");
 import * as path from 'path';
 import * as fs from 'fs';
 
-export class SecretsToErrorsMapping { 
+export class SecretsToErrorsMapping {
     public errorsMap: { [key: string]: string; };
 
     constructor() {
@@ -48,13 +48,13 @@ export class KeyVault {
         this.taskParameters = taskParameters;
 
         this.keyVaultClient = new armKeyVault.KeyVaultClient(
-            this.taskParameters.vaultCredentials, 
+            this.taskParameters.vaultCredentials,
             this.taskParameters.subscriptionId,
             this.taskParameters.keyVaultName,
             this.taskParameters.keyVaultUrl);
 
         let scriptContentFormat;
-        if(this.taskParameters.scheme === "ManagedServiceIdentity") {
+        if (this.taskParameters.scheme === "ManagedServiceIdentity") {
             scriptContentFormat = `$ErrorActionPreference=\"Stop\";
             Login-AzureRmAccount -SubscriptionId %s;
             $vmMetadata = Invoke-RestMethod -Headers @{"Metadata"="true"} -URI http://169.254.169.254/metadata/instance?api-version=2017-08-01 -Method get
@@ -72,11 +72,10 @@ export class KeyVault {
         this.provisionKeyVaultSecretsScript = util.format(scriptContentFormat, this.taskParameters.subscriptionId, this.taskParameters.servicePrincipalId, this.taskParameters.keyVaultName);
     }
 
-    public downloadSecrets(secretsToErrorsMap: SecretsToErrorsMapping): Promise<void> {
+    public async downloadSecrets(secretsToErrorsMap: SecretsToErrorsMapping): Promise<void> {
 
         var downloadAllSecrets = false;
-        if (this.taskParameters.secretsFilter && this.taskParameters.secretsFilter.length > 0)
-        {
+        if (this.taskParameters.secretsFilter && this.taskParameters.secretsFilter.length > 0) {
             if (this.taskParameters.secretsFilter.length === 1 && this.taskParameters.secretsFilter[0] === "*") {
                 downloadAllSecrets = true;
             }
@@ -91,9 +90,10 @@ export class KeyVault {
         tl.setVariable("SYSTEM_UNSAFEALLOWMULTILINESECRET", "true");
 
         if (downloadAllSecrets) {
-            return this.downloadAllSecrets(secretsToErrorsMap);
-        } else {
-            return this.downloadSelectedSecrets(this.taskParameters.secretsFilter, secretsToErrorsMap);
+            return await this.downloadAllSecrets(secretsToErrorsMap);
+        }
+        else {
+            return await this.downloadSelectedSecrets(this.taskParameters.secretsFilter, secretsToErrorsMap);
         }
     }
 
@@ -112,50 +112,42 @@ export class KeyVault {
                 }
 
                 console.log(tl.loc("NumberOfSecretsFound", this.taskParameters.keyVaultName, listOfSecrets.length));
-                listOfSecrets = this.filterDisabledAndExpiredSecrets(listOfSecrets);
-                console.log(tl.loc("NumberOfEnabledSecretsFound", this.taskParameters.keyVaultName, listOfSecrets.length));
+                const secrets = this.filterDisabledAndExpiredSecrets(listOfSecrets).map(secret => secret.name);
+                console.log(tl.loc("NumberOfEnabledSecretsFound", this.taskParameters.keyVaultName, secrets.length));
 
-                var getSecretValuePromises: Promise<any>[] = [];
-                listOfSecrets.forEach((secret: armKeyVault.AzureKeyVaultSecret, index: number) => {
-                    getSecretValuePromises.push(this.downloadSecretValue(secret.name, secretsToErrorsMap));
-                });
-
-                Promise.all(getSecretValuePromises).then(() =>{
+                this.downloadSelectedSecrets(secrets, secretsToErrorsMap).then(() => {
                     return resolve();
                 });
             });
         });
     }
 
-    private downloadSelectedSecrets(selectedSecrets: string[], secretsToErrorsMap: SecretsToErrorsMapping): Promise<void> {
+    private async downloadSelectedSecrets(secrets: string[], secretsToErrorsMap: SecretsToErrorsMapping): Promise<void> {
         tl.debug(util.format("Downloading selected secrets from subscriptionId: %s, vault: %s", this.taskParameters.subscriptionId, this.taskParameters.keyVaultName));
 
-        return new Promise<void>((resolve, reject) => {
-            var getSecretValuePromises: Promise<any>[] = [];
-            selectedSecrets.forEach((secretName: string, index: number) => {
-                getSecretValuePromises.push(this.downloadSecretValue(secretName, secretsToErrorsMap));
-            });
+        const chunkSize = 20;
+        for (let i = 0; i < secrets.length; i += chunkSize) {
+            const start = new Date().getTime();
 
-            Promise.all(getSecretValuePromises).then(() =>{
-                return resolve();
-            });
-        });
+            tl.debug(`Downloading part [${i} - ${Math.min(secrets.length, i + chunkSize)}] (total ${secrets.length} secrets)`);
+            const secretPromises: Promise<void>[] = [];
+            for (let j = i; j < secrets.length && j < i + chunkSize; j++) {
+                secretPromises.push(this.downloadSecretValue(secrets[j], secretsToErrorsMap));
+            }
+
+            await Promise.all(secretPromises);
+            const end = new Date().getTime();
+            tl.debug(`Downloaded part [${i} - ${i + secretPromises.length}] (took ${end - start} ms) (total ${secrets.length} secrets)`);
+        }
     }
 
     private filterDisabledAndExpiredSecrets(listOfSecrets: armKeyVault.AzureKeyVaultSecret[]): armKeyVault.AzureKeyVaultSecret[] {
-        var result: armKeyVault.AzureKeyVaultSecret[] = [];
-        var now: Date = new Date();
-
-        listOfSecrets.forEach((value: armKeyVault.AzureKeyVaultSecret, index: number) => {
-            if (value.enabled && (!value.expires || value.expires > now)) {
-                result.push(value);
-            }
-        });
-        
+        const now: Date = new Date();
+        const result = listOfSecrets.filter((value, _) => value.enabled && (!value.expires || value.expires > now));
         return result;
     }
 
-    private downloadSecretValue(secretName: string, secretsToErrorsMap: SecretsToErrorsMapping): Promise<any> {
+    private downloadSecretValue(secretName: string, secretsToErrorsMap: SecretsToErrorsMapping): Promise<void> {
         tl.debug(util.format("Promise for downloading secret value for: %s", secretName));
         secretName = secretName.trim();
 
@@ -168,7 +160,7 @@ export class KeyVault {
                 else {
                     this.setVaultVariable(secretName, secretValue);
                 }
-                
+
                 return resolve();
             });
         });
@@ -192,6 +184,10 @@ export class KeyVault {
             return;
         }
 
+        // Feature-flag gated fix for MSRC case 169467 (a bare CR with no LF gets re-split by the
+        // agent's line reader into a forged ##vso command).
+        const fixCrLfSecretMaskingEnabled: boolean = tl.getPipelineFeature("AzureKeyVaultV1CrLfSecretMaskingFixEnabled");
+
         // Support multiple stages using different key vaults with the same secret name but with different version identifiers
         let secretNameWithoutVersion = secretName.split("/")[0];
 
@@ -202,8 +198,21 @@ export class KeyVault {
             return;
         }
 
-        if (secretValue.indexOf('\n') < 0) {
-            // single-line case
+        // isMultiline intentionally ignores the flag: JSON-flattening/stored-value handling must
+        // stay identical to flag-off/master even when the fix is on (see PR review - routing a
+        // CR-only value through flattening would silently alter its stored value).
+        const isMultiline = secretValue.indexOf('\n') >= 0;
+
+        // A bare CR with no LF still needs per-fragment masking, otherwise it never reaches
+        // trySetSecret; this only adds masking calls, it never changes the stored value.
+        const hasBareCrOnly = fixCrLfSecretMaskingEnabled && !isMultiline && secretValue.indexOf('\r') >= 0;
+
+        if (!isMultiline) {
+            if (hasBareCrOnly) {
+                secretValue.split(/\r\n|\r|\n/).forEach((line: string) => {
+                    this.trySetSecret(secretName, line, fixCrLfSecretMaskingEnabled);
+                });
+            }
             tl.setVariable(secretNameWithoutVersion, secretValue, true);
             tl.setVariable(secretName, secretValue, true);
         }
@@ -216,9 +225,11 @@ export class KeyVault {
                 tl.setVariable(secretName, strVal, true);
             }
             else {
-                let lines = secretValue.split('\n');
+                let lines = fixCrLfSecretMaskingEnabled
+                    ? secretValue.split(/\r\n|\r|\n/)
+                    : secretValue.split('\n');
                 lines.forEach((line: string, index: number) => {
-                    this.trySetSecret(secretName, line);
+                    this.trySetSecret(secretName, line, fixCrLfSecretMaskingEnabled);
                 });
                 tl.setVariable(secretNameWithoutVersion, secretValue, true);
                 tl.setVariable(secretName, secretValue, true);
@@ -226,11 +237,12 @@ export class KeyVault {
         }
     }
 
-    private trySetSecret(secretName: string, secretValue: string): void {
+    private trySetSecret(secretName: string, secretValue: string, fixCrLfSecretMaskingEnabled: boolean): void {
         try {
-            let regExp = new RegExp(secretValue);
+            const valueToEmit = fixCrLfSecretMaskingEnabled ? secretValue.replace(/\r/g, '') : secretValue;
+            let regExp = new RegExp(valueToEmit);
 
-            console.log("##vso[task.setsecret]" + secretValue);
+            console.log("##vso[task.setsecret]" + valueToEmit);
         }
         catch (e) {
             console.log(tl.loc("CouldNotMaskSecret", secretName));

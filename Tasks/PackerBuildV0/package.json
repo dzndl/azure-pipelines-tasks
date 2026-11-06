@@ -1,16 +1,25 @@
 {
   "name": "vsts-tasks-packerbuild",
   "main": "main.js",
+  "scripts": {
+    "build": "node ../../make.js build --task PackerBuildV0",
+    "serverBuild": "node ../../make.js serverBuild --task PackerBuildV0"
+  },
   "dependencies": {
     "@types/mocha": "^5.2.7",
-    "@types/node": "^10.17.0",
+    "@types/node": "^20.3.1",
     "@types/q": "^1.0.7",
-    "azure-pipelines-task-lib": "^3.0.6-preview.0",
-    "azure-pipelines-tasks-azure-arm-rest-v2": "^2.0.1",
-    "decompress-zip": "0.3.0",
-    "moment": "2.21.0"
+    "agent-base": "^6.0.2",
+    "azure-pipelines-task-lib": "^5.281.0",
+    "azure-pipelines-tasks-azure-arm-rest": "3.263.1",
+    "decompress-zip": "^0.3.3",
+    "extract-zip": "2.0.1",
+    "moment": "^2.29.4"
   },
   "devDependencies": {
-    "typescript": "4.0.2"
+    "typescript": "5.1.6"
+  },
+  "overrides": {
+    "minimatch": "3.1.5"
   }
 }

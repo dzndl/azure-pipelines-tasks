@@ -13,9 +13,11 @@
   "author": "Microsoft Corporation",
   "version": {
     "Major": 0,
-    "Minor": 193,
+    "Minor": 281,
     "Patch": 0
   },
+  "deprecated": true,
+  "deprecationMessage": "This task has been deprecated. Use conda commands directly in the bash task or batch script task as an alternative.",
   "demands": [],
   "instanceNameFormat": "ms-resource:loc.instanceNameFormat",
   "groups": [
@@ -71,6 +73,14 @@
   ],
   "execution": {
     "Node10": {
+      "target": "main.js",
+      "argumentFormat": ""
+    },
+    "Node16": {
+      "target": "main.js",
+      "argumentFormat": ""
+    },
+    "Node20_1": {
       "target": "main.js",
       "argumentFormat": ""
     }

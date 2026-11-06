@@ -10,12 +10,20 @@ import * as nutil from 'azure-pipelines-tasks-packaging-common/nuget/Utility';
 import * as commandHelper from 'azure-pipelines-tasks-packaging-common/nuget/CommandHelper';
 import * as pkgLocationUtils from 'azure-pipelines-tasks-packaging-common/locationUtilities';
 import { getProjectAndFeedIdFromInputParam, logError } from 'azure-pipelines-tasks-packaging-common/util';
+import { RequestOptions } from 'azure-pipelines-tasks-packaging-common/universal/RequestUtilities';
 
 export async function run(): Promise<void> {
     console.log(tl.loc('DeprecatedDotnet2_2_And_3_0'));
     let packagingLocation: pkgLocationUtils.PackagingLocation;
     try {
-        packagingLocation = await pkgLocationUtils.getPackagingUris(pkgLocationUtils.ProtocolType.NuGet);
+        const timeout: number = utility.getRequestTimeout();
+        const webApiOptions: RequestOptions = { 
+            socketTimeout: timeout,
+            globalAgentOptions: {
+                timeout: timeout,
+            } 
+        };
+        packagingLocation = await pkgLocationUtils.getPackagingUris(pkgLocationUtils.ProtocolType.NuGet, webApiOptions);
     } catch (error) {
         tl.debug('Unable to get packaging URIs');
         logError(error);
@@ -82,7 +90,13 @@ export async function run(): Promise<void> {
             null /* tempConfigPath */,
             false /* useNugetToModifyConfigFile */);
 
-        let credCleanup = () => { return; };
+        let credCleanup = () => {
+            if (tl.exist(nuGetConfigHelper.tempNugetConfigPath)) {
+                tl.rmRF(nuGetConfigHelper.tempNugetConfigPath)
+            }
+        };
+
+        let isNugetOrgBehaviorWarn = false;
 
         // Now that the NuGetConfigHelper was initialized with all the known information we can proceed
         // and check if the user picked the 'select' option to fill out the config file if needed
@@ -102,6 +116,17 @@ export async function run(): Promise<void> {
 
             const includeNuGetOrg = tl.getBoolInput('includeNuGetOrg', false);
             if (includeNuGetOrg) {
+                // If includeNuGetOrg is true, check the INCLUDE_NUGETORG_BEHAVIOR env variable to determine task result 
+                // this allows compliance checks to warn or break the task if consuming from nuget.org directly 
+                const nugetOrgBehavior = includeNuGetOrg ? tl.getVariable("INCLUDE_NUGETORG_BEHAVIOR") : undefined;
+                tl.debug(`NugetOrgBehavior: ${nugetOrgBehavior}`);
+
+                if(nugetOrgBehavior?.toLowerCase() == "fail"){
+                    throw new Error(tl.loc("Error_IncludeNuGetOrgEnabled"));
+                } else if (nugetOrgBehavior?.toLowerCase() == "warn"){
+                    isNugetOrgBehaviorWarn = true;
+                }
+
                 sources.push(auth.NuGetOrgV3PackageSource);
             }
 
@@ -109,7 +134,6 @@ export async function run(): Promise<void> {
             if (sources.length > 0) {
                 tl.debug(`Adding the following sources to the config file: ${sources.map(x => x.feedName).join(';')}`);
                 nuGetConfigHelper.addSourcesToTempNuGetConfig(sources);
-                credCleanup = () => { tl.rmRF(nuGetConfigHelper.tempNugetConfigPath); };
                 nuGetConfigPath = nuGetConfigHelper.tempNugetConfigPath;
             } else {
                 tl.debug('No sources were added to the temp NuGet.config file');
@@ -135,8 +159,9 @@ export async function run(): Promise<void> {
             nuGetConfigHelper.restoreBackupRootNuGetFiles();
         }
 
-        tl.setResult(tl.TaskResult.Succeeded, tl.loc('PackagesInstalledSuccessfully'));
-
+        isNugetOrgBehaviorWarn 
+        ? tl.setResult(tl.TaskResult.SucceededWithIssues, tl.loc("Warning_IncludeNuGetOrgEnabled"))
+        : tl.setResult(tl.TaskResult.Succeeded, tl.loc("PackagesInstalledSuccessfully"));
     } catch (err) {
 
         tl.error(err);

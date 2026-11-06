@@ -3,13 +3,24 @@ import tr = require("azure-pipelines-task-lib/toolrunner");
 import path = require("path");
 import fs = require("fs");
 import ltx = require("ltx");
+import * as JSON5 from 'json5';
 var archiver = require('archiver');
 var uuidV4 = require('uuid/v4');
+const nodeVersion = parseInt(process.version.split('.')[0].replace('v', ''));
+if (nodeVersion > 16) {
+    require("dns").setDefaultResultOrder("ipv4first");
+    tl.debug("Set default DNS lookup order to ipv4 first");
+}
 
+if (nodeVersion > 19) {
+    require("net").setDefaultAutoSelectFamily(false);
+    tl.debug("Set default auto select family to false");
+}
 import * as packCommand from './packcommand';
 import * as pushCommand from './pushcommand';
 import * as restoreCommand from './restorecommand';
 import * as utility from './Common/utility';
+import * as telemetry from "azure-pipelines-tasks-utility-common/telemetry";
 
 export class dotNetExe {
     private command: string;
@@ -32,10 +43,10 @@ export class dotNetExe {
     }
 
     public async execute() {
-        tl.setResourcePath(path.join(__dirname, "node_modules", "azure-pipelines-tasks-packaging-common", "module.json"));
         tl.setResourcePath(path.join(__dirname, "task.json"));
 
         this.setConsoleCodePage();
+        this.setUpConnectedServiceEnvironmentVariables();
 
         try {
             switch (this.command) {
@@ -52,6 +63,7 @@ export class dotNetExe {
                     await this.executeTestCommand();
                     break;
                 case "restore":
+                    this.logRestoreStartUpVariables();
                     await restoreCommand.run();
                     break;
                 case "pack":
@@ -106,7 +118,7 @@ export class dotNetExe {
             } else {
                 dotnet.arg(projectFile);
             }
-            if (this.isBuildCommand()) {
+            if (this.isBuildCommand() || (this.isPublishCommand() && this.shouldUsePublishLogger())) {
                 var loggerAssembly = path.join(__dirname, 'dotnet-build-helpers/Microsoft.TeamFoundation.DistributedTask.MSBuild.Logger.dll');
                 dotnet.arg(`-dl:CentralLogger,\"${loggerAssembly}\"*ForwardingLogger,\"${loggerAssembly}\"`);
             }
@@ -134,13 +146,99 @@ export class dotNetExe {
         }
     }
 
+    private findGlobalJsonFile(): string | null {
+        // Determine the search boundary mirroring the agent's own logic:
+        // - Default: Agent.BuildDirectory (_work/1)
+        // - If AZP_AGENT_ALLOW_WORK_DIRECTORY_REPOSITORIES=true: widen to Agent.WorkFolder (_work/)
+        // See: RepositoryPlugin.cs:156-166 and BuildDirectoryManager.cs:197-210
+        const allowWorkDirRepos = (tl.getVariable('AZP_AGENT_ALLOW_WORK_DIRECTORY_REPOSITORIES') || '').toLowerCase() === 'true';
+        let boundary: string;
+
+        if (allowWorkDirRepos) {
+            boundary = path.resolve(tl.getVariable('Agent.WorkFolder') || process.cwd());
+            tl.debug(`AZP_AGENT_ALLOW_WORK_DIRECTORY_REPOSITORIES is enabled. Using Agent.WorkFolder '${boundary}' as search boundary.`);
+        } else {
+            boundary = path.resolve(tl.getVariable('Agent.BuildDirectory') || process.cwd());
+            tl.debug(`Using Agent.BuildDirectory '${boundary}' as search boundary.`);
+        }
+
+        let searchDir = path.resolve(this.workingDirectory || process.cwd());
+
+        tl.debug(`Searching for global.json starting in '${searchDir}' up to boundary '${boundary}'.`);
+
+        const isInside = (dir: string, root: string): boolean => {
+            const rel = path.relative(root, dir);
+            return !rel.startsWith('..') && !path.isAbsolute(rel);
+        };
+
+        if (!isInside(searchDir, boundary)) {
+            console.log(`Working directory '${searchDir}' is outside boundary '${boundary}'. Skipping global.json search.`);
+            return null;
+        }
+
+        while (true) {
+            const candidate = path.join(searchDir, 'global.json');
+            tl.debug(`Checking for global.json at: ${candidate}`);
+
+            if (tl.exist(candidate)) {
+                tl.debug(`Found global.json at: ${candidate}`);
+                return candidate;
+            }
+
+            const parentDir = path.dirname(searchDir);
+            if (parentDir === searchDir) {
+                break;
+            }
+
+            const rel = path.relative(boundary, parentDir);
+            if (rel.startsWith('..') || path.isAbsolute(rel)) {
+                break;
+            }
+
+            searchDir = parentDir;
+        }
+
+        return null;
+    }
+
+    private getIsMicrosoftTestingPlatform(): boolean {
+        const globalJsonPath = this.findGlobalJsonFile();
+
+        if (!globalJsonPath) {
+            tl.debug("global.json not found. Test run is VSTest");
+            return false;
+        }
+
+        let globalJsonContents = fs.readFileSync(globalJsonPath, 'utf8');
+        if (!globalJsonContents.length) {
+            tl.debug("global.json is empty. Test run is VSTest");
+            return false;
+        }
+
+        try {
+            const parsed = JSON5.parse(globalJsonContents);
+            const testRunner = parsed?.test?.runner;
+            tl.debug(`global.json found at ${globalJsonPath}. Test runner is: '${testRunner}'`);
+            return testRunner === 'Microsoft.Testing.Platform';
+        } catch (error) {
+            tl.warning(`Error occurred reading global.json at ${globalJsonPath}: ${error}`);
+            return false;
+        }
+    }
+
     private async executeTestCommand(): Promise<void> {
         const dotnetPath = tl.which('dotnet', true);
         console.log(tl.loc('DeprecatedDotnet2_2_And_3_0'));
         const enablePublishTestResults: boolean = tl.getBoolInput('publishTestResults', false) || false;
         const resultsDirectory = tl.getVariable('Agent.TempDirectory');
+        const isMTP: boolean = !tl.getPipelineFeature('DisableDotnetConfigDetection') && this.getIsMicrosoftTestingPlatform();
+
         if (enablePublishTestResults && enablePublishTestResults === true) {
-            this.arguments = ` --logger trx --results-directory "${resultsDirectory}" `.concat(this.arguments);
+            if (isMTP) {
+                this.arguments = ` --report-trx --results-directory "${resultsDirectory}" `.concat(this.arguments);
+            } else {
+                this.arguments = ` --logger trx --results-directory "${resultsDirectory}" `.concat(this.arguments);
+            }
         }
 
         // Remove old trx files
@@ -160,6 +258,22 @@ export class dotNetExe {
             const projectFile = projectFiles[fileIndex];
             const dotnet = tl.tool(dotnetPath);
             dotnet.arg(this.command);
+
+            if (isMTP && projectFile.length > 0) {
+                // https://github.com/dotnet/sdk/blob/cbb8f75623c4357919418d34c53218ca9b57358c/src/Cli/dotnet/Commands/Test/CliConstants.cs#L34
+                if (projectFile.endsWith(".proj") || projectFile.endsWith(".csproj") || projectFile.endsWith(".vbproj") || projectFile.endsWith(".fsproj")) {
+                    dotnet.arg("--project");
+                }
+                else if (projectFile.endsWith(".sln") || projectFile.endsWith(".slnx") || projectFile.endsWith(".slnf")) {
+                    dotnet.arg("--solution");
+                }
+                else {
+                    tl.error(`Project file '${projectFile}' has an unrecognized extension.`);
+                    failedProjects.push(projectFile);
+                    continue;
+                }
+            }
+
             dotnet.arg(projectFile);
             dotnet.line(this.arguments);
             try {
@@ -380,7 +494,7 @@ export class dotNetExe {
             var fileBuffer: Buffer = fs.readFileSync(projectfile);
             var webConfigContent: string;
 
-            var fileEncodings = ['utf8', 'utf16le'];
+            var fileEncodings:Array<BufferEncoding> = ['utf8', 'utf16le'];
 
             for (var i = 0; i < fileEncodings.length; i++) {
                 tl.debug("Trying to decode with " + fileEncodings[i]);
@@ -408,8 +522,83 @@ export class dotNetExe {
         return this.command === "run";
     }
 
+    private shouldUsePublishLogger(): boolean {
+        // Feature flag to control MSBuild logger for dotnet publish command
+        // Default: enabled (opt-out pattern) - users can disable if needed
+        // Set DISTRIBUTEDTASK_TASKS_DISABLEDOTNETPUBLISHLOGGER=true to disable
+        const disablePublishLogger = tl.getPipelineFeature('DisableDotNetPublishLogger');
+        
+        if (disablePublishLogger) {
+            tl.debug('MSBuild logger disabled for dotnet publish via feature flag DisableDotNetPublishLogger');
+            return false;
+        }
+        
+        return true;
+    }
+
     private static getModifiedOutputForProjectFile(outputBase: string, projectFile: string): string {
         return path.join(outputBase, path.basename(path.dirname(projectFile)));
+    }
+
+    private logRestoreStartUpVariables() {
+        try {
+            const nugetfeedtype = tl.getInput("nugetfeedtype");
+            let externalendpoint = null;
+            if (nugetfeedtype != null && nugetfeedtype === "external") {
+                const epId = tl.getInput("externalendpoint");
+                if (epId) {
+                    externalendpoint = {
+                        feedName: tl.getEndpointUrl(epId, false).replace(/\W/g, ""),
+                        feedUri: tl.getEndpointUrl(epId, false),
+                    };
+                }
+            }
+    
+            let externalendpoints = tl.getDelimitedInput("externalendpoints", ",");
+            if (externalendpoints) {
+                externalendpoints = externalendpoints.reduce((ary, id) => {
+                    const te = {
+                        feedName: tl.getEndpointUrl(id, false).replace(/\W/g, ""),
+                        feedUri: tl.getEndpointUrl(id, false),
+                    };
+                    ary.push(te);
+                    return ary;
+                }, []);
+            }
+            const nugetTelem = {
+                "command": tl.getInput("command"),
+                "System.TeamFoundationCollectionUri": tl.getVariable("System.TeamFoundationCollectionUri"),
+                "includenugetorg": tl.getInput("includenugetorg"),
+                "nocache": tl.getInput("nocache"),
+                "nugetconfigpath": tl.getInput("nugetconfigpath"),
+                "nugetfeedtype": nugetfeedtype,
+                "selectorconfig": tl.getInput("selectorconfig"),
+                "projects": tl.getInput("projects"),
+                "verbosityrestore": tl.getInput("verbosityrestore")
+            };
+            telemetry.emitTelemetry("Packaging", "DotNetCoreCLIRestore", nugetTelem);
+        } catch (err) {
+            tl.debug(`Unable to log NuGet task init telemetry. Err:( ${err} )`);
+        }
+    }
+
+    private setUpConnectedServiceEnvironmentVariables() {
+        var connectedService = tl.getInput('ConnectedServiceName');
+        if(connectedService) {
+            var authScheme: string = tl.getEndpointAuthorizationScheme(connectedService, false);
+            if (authScheme && authScheme.toLowerCase() == "workloadidentityfederation") {
+                process.env.AZURESUBSCRIPTION_SERVICE_CONNECTION_ID = connectedService;
+                process.env.AZURESUBSCRIPTION_CLIENT_ID = tl.getEndpointAuthorizationParameter(connectedService, "serviceprincipalid", false);
+                process.env.AZURESUBSCRIPTION_TENANT_ID = tl.getEndpointAuthorizationParameter(connectedService, "tenantid", false);
+                tl.debug('Environment variables AZURESUBSCRIPTION_SERVICE_CONNECTION_ID,AZURESUBSCRIPTION_CLIENT_ID and AZURESUBSCRIPTION_TENANT_ID are set');
+            }
+            else {
+                tl.warning('Connected service is not of type Workload Identity Federation');
+            }
+        }
+        else {
+            tl.debug('No connected service set');
+        }
     }
 }
 

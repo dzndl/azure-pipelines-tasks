@@ -1,9 +1,11 @@
-import { Utility } from './Utility';
+import { PowerShellScriptResult, Utility } from './Utility';
 import tl = require("azure-pipelines-task-lib/task");
+import os = require("os");
+import { emitTelemetry } from 'azure-pipelines-tasks-artifacts-common/telemetry';
 
 export class ScriptTypeFactory {
     public static getSriptType(): ScriptType {
-        let scriptType: string = tl.getInput("scriptType", true);
+        let scriptType: string = tl.getInput("scriptType", true).toLowerCase();
         let scriptLocation: string = tl.getInput("scriptLocation", true);
         if (!(['inlinescript', 'scriptpath'].find((acceptedValue) => { return scriptLocation.toLowerCase() === acceptedValue; }))) {
             throw new Error(tl.loc('UnacceptedScriptLocationValue', scriptLocation));
@@ -29,17 +31,30 @@ export abstract class ScriptType {
     protected _scriptLocation: string;
     protected _scriptArguments: string;
     protected _scriptPath: string;
+    protected _azShimDirectory: string;
 
     constructor(scriptLocation: string, scriptArguments: string) {
         this._scriptLocation = scriptLocation;
         this._scriptArguments = scriptArguments;
     }
 
-    public abstract async getTool(): Promise<any>;
+    public abstract getTool(): Promise<any>;
 
     public async cleanUp(): Promise<void> {
         if(this._scriptLocation.toLowerCase() === 'inlinescript') {
             await Utility.deleteFile(this._scriptPath);
+        }
+    }
+
+    protected async cleanUpFileInvocationArtifacts(reason: string): Promise<void> {
+        if (this._scriptPath) {
+            await Utility.deleteFile(this._scriptPath);
+            this._scriptPath = undefined;
+        }
+        if (this._azShimDirectory) {
+            const shimDirectory = this._azShimDirectory;
+            this._azShimDirectory = undefined;
+            Utility.deleteDirectory(shimDirectory, reason);
         }
     }
 }
@@ -47,6 +62,20 @@ export abstract class ScriptType {
 export class WindowsPowerShell extends ScriptType {
 
     public async getTool(): Promise<any> {
+        if (os.platform() === 'win32' && tl.getPipelineFeature('AzureCliUseFileInvocation')) {
+            try {
+                return await this.getToolWithFileInvocation();
+            } catch (err) {
+                await this.cleanUpFileInvocationArtifacts('fileInvocationFallback');
+                tl.debug(`File invocation failed, falling back to -Command invocation: ${err.message}`);
+                try {
+                    emitTelemetry('AzureCLIV2', 'FileInvocationFallback', { scriptType: 'ps', error: err.message || String(err) });
+                } catch (telErr) {
+                    tl.debug(`Unable to emit telemetry: ${telErr}`);
+                }
+            }
+        }
+
         this._scriptPath = await Utility.getPowerShellScriptPath(this._scriptLocation, ['ps1'], this._scriptArguments);
         let tool: any = tl.tool(tl.which('powershell', true))
             .arg('-NoLogo')
@@ -59,14 +88,48 @@ export class WindowsPowerShell extends ScriptType {
         return tool;
     }
 
+    private async getToolWithFileInvocation(): Promise<any> {
+        const result: PowerShellScriptResult = await Utility.getPowerShellScriptPathWithAzModule(
+            this._scriptLocation, ['ps1'], this._scriptArguments
+        );
+
+        this._scriptPath = result.scriptPath;
+        this._azShimDirectory = result.azShimDirectory;
+
+        let tool: any = tl.tool(tl.which('powershell', true))
+            .arg('-NoLogo')
+            .arg('-NoProfile')
+            .arg('-NonInteractive')
+            .arg('-ExecutionPolicy')
+            .arg('Unrestricted')
+            .arg('-File')
+            .arg(this._scriptPath);
+        tl.debug('Using -File invocation for Windows PowerShell to avoid CMD metacharacter issues.');
+        return tool;
+    }
+
     public async cleanUp(): Promise<void> {
-        await Utility.deleteFile(this._scriptPath);
+        await this.cleanUpFileInvocationArtifacts('taskCleanup');
     }
 }
 
 export class PowerShellCore extends ScriptType {
 
     public async getTool(): Promise<any> {
+        if (os.platform() === 'win32' && tl.getPipelineFeature('AzureCliUseFileInvocation')) {
+            try {
+                return await this.getToolWithFileInvocation();
+            } catch (err) {
+                await this.cleanUpFileInvocationArtifacts('fileInvocationFallback');
+                tl.debug(`File invocation failed, falling back to -Command invocation: ${err.message}`);
+                try {
+                    emitTelemetry('AzureCLIV2', 'FileInvocationFallback', { scriptType: 'pscore', error: err.message || String(err) });
+                } catch (telErr) {
+                    tl.debug(`Unable to emit telemetry: ${telErr}`);
+                }
+            }
+        }
+
         this._scriptPath = await Utility.getPowerShellScriptPath(this._scriptLocation, ['ps1'], this._scriptArguments);
         let tool: any = tl.tool(tl.which('pwsh', true))
             .arg('-NoLogo')
@@ -79,8 +142,28 @@ export class PowerShellCore extends ScriptType {
         return tool;
     }
 
+    private async getToolWithFileInvocation(): Promise<any> {
+        const result: PowerShellScriptResult = await Utility.getPowerShellScriptPathWithAzModule(
+            this._scriptLocation, ['ps1'], this._scriptArguments
+        );
+
+        this._scriptPath = result.scriptPath;
+        this._azShimDirectory = result.azShimDirectory;
+
+        let tool: any = tl.tool(tl.which('pwsh', true))
+            .arg('-NoLogo')
+            .arg('-NoProfile')
+            .arg('-NonInteractive')
+            .arg('-ExecutionPolicy')
+            .arg('Unrestricted')
+            .arg('-File')
+            .arg(this._scriptPath);
+        tl.debug('Using -File invocation for PowerShell Core to avoid CMD metacharacter issues.');
+        return tool;
+    }
+
     public async cleanUp(): Promise<void> {
-        await Utility.deleteFile(this._scriptPath);
+        await this.cleanUpFileInvocationArtifacts('taskCleanup');
     }
 }
 

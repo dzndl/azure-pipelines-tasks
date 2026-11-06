@@ -1,8 +1,29 @@
 {
+  "name": "openpolicyagentinstaller",
+  "description": "Azure Pipelines Open Policy Agent Installer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/microsoft/azure-pipelines-tasks.git"
+  },
+  "main": "..\\src\\opatoolinstaller.js",
+  "scripts": {
+    "build": "node ../../make.js build --task OpenPolicyAgentInstallerV0",
+    "serverBuild": "node ../../make.js serverBuild --task OpenPolicyAgentInstallerV0",
+    "test": "node ../../make.js test --task OpenPolicyAgentInstallerV0"
+  },
+  "author": "Microsoft Corporation",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Microsoft/azure-pipelines-tasks/issues"
+  },
+  "homepage": "https://github.com/Microsoft/azure-pipelines-tasks#readme",
   "dependencies": {
-    "@types/node": "^6.0.101",
-    "@types/q": "^1.5.0",
-    "azure-pipelines-task-lib": "2.8.0",
-    "azure-pipelines-tool-lib": "0.12.0"
+    "@types/node": "^24.10.0",
+    "@types/mocha": "^5.2.7",
+    "azure-pipelines-task-lib": "^5.281.1",
+    "azure-pipelines-tool-lib": "^2.281.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
   }
 }

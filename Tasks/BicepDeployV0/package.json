@@ -1,0 +1,31 @@
+{
+  "name": "bicepdeploy",
+  "main": "main.js",
+  "scripts": {
+    "build": "node ../../make.js build --task BicepDeployV0",
+    "serverBuild": "node ../../make.js serverBuild --task BicepDeployV0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/Microsoft/azure-pipelines-tasks.git"
+  },
+  "author": "Microsoft Corporation",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Microsoft/azure-pipelines-tasks/issues"
+  },
+  "homepage": "https://github.com/Microsoft/azure-pipelines-tasks#readme",
+  "dependencies": {
+    "@azure/bicep-deploy-common": "0.6.7",
+    "@types/mocha": "^5.2.7",
+    "@types/node": "^24.10.0",
+    "@types/q": "^1.5.8",
+    "agent-base": "^6.0.2",
+    "azure-pipelines-task-lib": "^5.281.1",
+    "azure-pipelines-tasks-azure-arm-rest": "^3.281.0",
+    "azure-pipelines-tool-lib": "^2.281.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

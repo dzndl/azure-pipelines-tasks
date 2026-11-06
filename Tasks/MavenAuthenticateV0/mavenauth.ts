@@ -1,8 +1,15 @@
 import tl = require('azure-pipelines-task-lib/task');
 import util = require('./mavenutils');
 
+import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { emitTelemetry } from 'azure-pipelines-tasks-artifacts-common/telemetry';
+import { IssueSource } from 'azure-pipelines-task-lib/internal';
+
+#if WIF
+import { getFederatedWorkloadIdentityCredentials, getFeedTenantId } from "azure-pipelines-tasks-artifacts-common/EntraWifUserServiceConnectionUtils";
+#endif
 
 const M2FolderName: string = ".m2";
 const SettingsXmlName: string = "settings.xml";
@@ -10,19 +17,25 @@ const backupSettingsXmlName: string = "_settings.xml";
 
 tl.setResourcePath(path.join(__dirname, 'task.json'));
 
+function tryChmodSync(targetPath: string, mode: number): void {
+    try {
+        fs.chmodSync(targetPath, mode);
+    } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : err;
+
+        tl.warning(
+            tl.loc("Warning_ChmodFailed", targetPath, mode.toString(8), errorMessage),
+            IssueSource.CustomerScript
+        );
+    }
+}
+
 async function run(): Promise<void> {
     let internalFeedServerElements: any[] = [];
     let externalServiceEndpointsServerElements: any[] = [];
+    let federatedFeedAuthSuccessCount: number = 0;
     try {
-        internalFeedServerElements = util.getInternalFeedsServerElements("artifactsFeeds");
-        externalServiceEndpointsServerElements = util.getExternalServiceEndpointsServerElements("mavenServiceConnections");
-        const newServerElements = internalFeedServerElements.concat(externalServiceEndpointsServerElements);
-
-        if(newServerElements.length === 0) {
-            tl.warning(tl.loc("Warning_NoEndpointsToAuth"));
-            return;
-        }
-
+        const restrictPermissions = !tl.osType().match(/^Win/);
         let userM2FolderPath: string = "";
 
         if (tl.osType().match(/^Win/)) {
@@ -34,6 +47,9 @@ async function run(): Promise<void> {
         if (!tl.exist(userM2FolderPath)) {
             tl.debug(tl.loc("Info_M2FolderDoesntExist", userM2FolderPath));
             tl.mkdirP(userM2FolderPath);
+            if (restrictPermissions) {
+                tryChmodSync(userM2FolderPath, 0o700);
+            }
         }
 
         let userSettingsXmlPath: string = path.join(userM2FolderPath, SettingsXmlName);
@@ -44,12 +60,80 @@ async function run(): Promise<void> {
 
         if (tl.exist(userSettingsXmlPath)) {
             tl.debug(tl.loc("Info_SettingsXmlRead", userSettingsXmlPath));
-            tl.cp(userSettingsXmlPath, backupSettingsXmlPath);
-            tl.setTaskVariable("backupUserM2SettingsFilePath", backupSettingsXmlPath);
+            if (!tl.getVariable('FIRST_RUN_SETTINGS_XML_EXISTS_PATH') && !tl.exist(backupSettingsXmlPath)) {
+                if (restrictPermissions) {
+                    try {
+                        const originalSettingsXmlMode = fs.statSync(userSettingsXmlPath).mode & 0o777;
+                        tl.setTaskVariable("originalUserM2SettingsFileMode", originalSettingsXmlMode.toString(8));
+                    } catch (err) {
+                        tl.warning(tl.loc("Warning_StatFailed", userSettingsXmlPath, (err && err.message) ? err.message : err), IssueSource.CustomerScript);
+                    }
+                }
+                tl.cp(userSettingsXmlPath, backupSettingsXmlPath);
+                tl.setTaskVariable("backupUserM2SettingsFilePath", backupSettingsXmlPath);
+                if (restrictPermissions) {
+                    tryChmodSync(backupSettingsXmlPath, 0o600);
+                }
+            }
+            if (restrictPermissions) {
+                tryChmodSync(userSettingsXmlPath, 0o600);
+            }
             settingsJson = await util.readXmlFileAsJson(userSettingsXmlPath);
         }
         else {
             tl.debug(tl.loc("Info_CreatingSettingsXml", userSettingsXmlPath));
+            tl.setVariable('FIRST_RUN_SETTINGS_XML_EXISTS_PATH', userSettingsXmlPath);
+        }
+
+#if WIF
+        const entraWifServiceConnectionName = tl.getInput("workloadIdentityServiceConnection");
+        const feedIdNames = tl.getDelimitedInput("artifactsFeeds", ',');
+
+        if (entraWifServiceConnectionName) {
+
+            if (feedIdNames.length === 0) {
+                tl.warning(tl.loc("Warning_NoEndpointsToAuth"));
+                return;
+            }
+            
+            tl.debug(tl.loc("Info_AddingFederatedFeedAuth", entraWifServiceConnectionName));
+            let token = await getFederatedWorkloadIdentityCredentials(entraWifServiceConnectionName);
+            
+            if (token) {
+
+                for (let feedName of feedIdNames) {
+                    const wifServerElement = {
+                        id: feedName,
+                        username: entraWifServiceConnectionName,
+                        password: token
+                    };
+    
+                    settingsJson = util.addRepositoryEntryToSettingsJson(settingsJson, wifServerElement);
+                    federatedFeedAuthSuccessCount++;
+                    tl.writeExternalOutput(
+                        tl.loc("Info_SuccessAddingFederatedFeedAuth", feedName) + os.EOL,
+                        { source: 'remote' }
+                    );
+                }
+
+                tl.debug(tl.loc("Info_WritingToSettingsXml"));
+                await util.jsonToXmlConverter(userSettingsXmlPath, settingsJson);
+
+            }
+            else {
+                tl.warning(tl.loc("Warning_TokenNotGenerated"));
+            }
+            return;
+        }
+#endif
+
+        internalFeedServerElements = util.getInternalFeedsServerElements("artifactsFeeds");
+        externalServiceEndpointsServerElements = util.getExternalServiceEndpointsServerElements("mavenServiceConnections");
+        const newServerElements = internalFeedServerElements.concat(externalServiceEndpointsServerElements);
+
+        if(newServerElements.length === 0) {
+            tl.warning(tl.loc("Warning_NoEndpointsToAuth"));
+            return;
         }
 
         for (let serverElement of newServerElements) {
@@ -65,7 +149,8 @@ async function run(): Promise<void> {
     finally {
         emitTelemetry("Packaging", "MavenAuthenticate", {
             "InternalFeedAuthCount": internalFeedServerElements.length,
-            "ExternalRepoAuthCount": externalServiceEndpointsServerElements.length
+            "ExternalRepoAuthCount": externalServiceEndpointsServerElements.length,
+            "FederatedFeedAuthCount": federatedFeedAuthSuccessCount
         });
     }
 }

@@ -4,6 +4,12 @@
 
 The task is used to copy application files and other artifacts that are required to install the application on Azure VMs like PowerShell scripts, PowerShell-DSC modules etc. The task provides the ability to copy files to an Azure blob or directly to Azure VMs. Even when the target is Azure VMs, Azure blobs are used as an intermediary and the files are copied to it first and then downloaded to the VMs. The tasks uses [AzCopy](https://azure.microsoft.com/en-in/documentation/articles/storage-use-azcopy/), the command-line utility built for fast copying of data from and into Azure storage accounts.
 
+### Remote argument hardening
+
+When copying to Azure VMs, remote arguments are escaped before script embedding. By default, the fallback AzCopy invocation passes arguments as data rather than evaluating them as PowerShell. It expands only `$env:NAME` and `${env:NAME}` references in the destination and additional arguments, once; other PowerShell expressions are not evaluated.
+
+For emergency rollback, set the shared pipeline variable `DistributedTask.Tasks.AzureFileCopy.DisableTargetPathHardening` to `true`. This disables this hardening across AzureFileCopy V2-V5, restoring the previous behavior, including unsafe argument evaluation, and should be temporary. Leave the variable unset or `false` to keep hardening enabled. Existing SourcePath hardening and sanitizer switches retain their precedence.
+
 ### Contact Information
 
 Please report a problem at [Developer Community Forum](https://developercommunity.visualstudio.com/spaces/21/index.html) if you are facing problems in making this task work.  You can also share feedback about the task like, what more functionality should be added to the task, what other tasks you would like to have, at the same place.
@@ -54,7 +60,7 @@ The parameters of the task are described in details, including examples, to show
 
   * **Resource Group**: Name of the resource group that contains the Azure VMs.
 
-  * **Select Machines By**: The parameter is used to copy the files to a subset of VMs and the subset can be specified by the host name of the VMs or the tags on them. [Tags](https://azure.microsoft.com/en-in/documentation/articles/virtual-machines-tagging-arm/) are supported for resources created via the Azure Resource Manager only.
+  * **Select Machines By**: The parameter is used to copy the files to a subset of VMs and the subset can be specified by the host name of the VMs or the tags on them. [Tags](https://learn.microsoft.com/en-us/azure/virtual-machines/tag-template/) are supported for resources created via the Azure Resource Manager only.
 
   * **Filter Criteria**: If you are copying to a subset of VMs using machine names filter, you can provide a comma separated list of the VM host names for example, ffweb, ffdb1, ffdb2. If you are using tags then you can specify tags in the format “<Key1>:<Value1>, <Key2>:<Value2>” for example, role:web, db; OS:win7. The default behavior is to copy to all the VMs in the Resource Group. Note the delimiters used for tags are &#44;(comma), &#58;(colon) and &#59;(semicolon).
 

@@ -1,0 +1,257 @@
+// NpmAuthenticate L0 tests - Workload Identity Federation (WIF)
+// These tests exercise the #if WIF code paths, which are only compiled into
+// the NpmAuthenticateV0_Wif build variant.
+
+import assert from 'assert';
+import { TestEnvVars, TestData } from './TestConstants';
+import { TestHelpers } from './TestHelpers';
+
+describe('NpmAuthenticate L0 - Workload Identity Federation (WIF)', function () {
+    this.timeout(20000);
+
+    beforeEach(function () {
+        TestHelpers.beforeEach();
+    });
+
+    afterEach(function () {
+        TestHelpers.afterEach();
+    });
+
+    it('authenticates a specific feed via feedUrl + service connection', async () => {
+        // Arrange: .npmrc has one registry that matches the feedUrl
+        const npmrcPath = TestHelpers.createTempNpmrc(`registry=${TestData.wifRegistryUrl}`);
+
+        // Act
+        const tr = await TestHelpers.runTestWithEnv({
+            [TestEnvVars.npmrcPath]: npmrcPath,
+            [TestEnvVars.workloadIdentityServiceConnection]: TestData.wifServiceConnection,
+            [TestEnvVars.wifRegistryUrl]: TestData.wifRegistryUrl,
+            [TestEnvVars.wifToken]: TestData.wifToken
+        });
+
+        // Assert
+        TestHelpers.assertSuccess(tr);
+        TestHelpers.assertNpmrcContains(npmrcPath, TestData.wifToken,
+            'The WIF federated token should be written as the auth token for the registry');
+        TestHelpers.assertOutputContains(tr, 'Info_SuccessAddingFederatedFeedAuth');
+    });
+
+    it('fails when feedUrl is not present in the .npmrc file', async () => {
+        // Arrange: .npmrc has a different registry, not the one specified as feedUrl
+        const differentRegistry = 'https://pkgs.dev.azure.com/testorg/_packaging/OtherFeed/npm/registry/';
+        const npmrcPath = TestHelpers.createTempNpmrc(`registry=${differentRegistry}`);
+
+        // Act
+        const tr = await TestHelpers.runTestWithEnv({
+            [TestEnvVars.npmrcPath]: npmrcPath,
+            [TestEnvVars.workloadIdentityServiceConnection]: TestData.wifServiceConnection,
+            // feedUrl points to a registry that is NOT in the .npmrc
+            [TestEnvVars.wifRegistryUrl]: TestData.wifRegistryUrl,
+            [TestEnvVars.wifToken]: TestData.wifToken
+        });
+
+        // Assert: task must fail because the specified feedUrl has no matching entry in .npmrc
+        TestHelpers.assertFailure(tr, 'Task should fail when feedUrl is not matched by any registry in .npmrc');
+        TestHelpers.assertOutputContains(tr, 'IgnoringRegistry');
+    });
+
+    it('authenticates all .npmrc registries when no feedUrl is given', async () => {
+        // Arrange: two registries in .npmrc, no feedUrl — WIF auth applied to both
+        const url1 = 'https://pkgs.dev.azure.com/testorg/_packaging/FeedA/npm/registry/';
+        const url2 = 'https://pkgs.dev.azure.com/testorg/_packaging/FeedB/npm/registry/';
+        const npmrcPath = TestHelpers.createTempNpmrc(
+            `@scopeA:registry=${url1}\n@scopeB:registry=${url2}`
+        );
+
+        // Act
+        const tr = await TestHelpers.runTestWithEnv({
+            [TestEnvVars.npmrcPath]: npmrcPath,
+            [TestEnvVars.workloadIdentityServiceConnection]: TestData.wifServiceConnection,
+            // No wifRegistryUrl → feedUrl input is not set
+            [TestEnvVars.wifToken]: TestData.wifToken
+        });
+
+        // Assert
+        TestHelpers.assertSuccess(tr);
+        TestHelpers.assertNpmrcContains(npmrcPath, TestData.wifToken,
+            'WIF token should be written for all registries when no feedUrl is specified');
+        // Verify both registries got auth
+        const appended = TestHelpers.getAppendedAuth(tr, npmrcPath);
+        assert.strictEqual(appended.length, 2, 'auth should be appended for each of the 2 registries');
+    });
+
+    it('only authenticates HTTPS registries when no feedUrl is given', async () => {
+        const httpRegistry = 'http://registry.example.com/npm/';
+        const httpsRegistry = 'HTTPS://pkgs.dev.azure.com/testorg/_packaging/HttpsFeed/npm/registry/';
+        const npmrcPath = TestHelpers.createTempNpmrc(
+            `@http:registry=${httpRegistry}\n@https:registry=${httpsRegistry}`
+        );
+
+        const tr = await TestHelpers.runTestWithEnv({
+            [TestEnvVars.npmrcPath]: npmrcPath,
+            [TestEnvVars.workloadIdentityServiceConnection]: TestData.wifServiceConnection,
+            [TestEnvVars.wifToken]: TestData.wifToken
+        });
+
+        TestHelpers.assertSuccess(tr);
+        assert.deepStrictEqual(TestHelpers.getAppendedAuth(tr, npmrcPath), [
+            `//pkgs.dev.azure.com/testorg/_packaging/HttpsFeed/npm/registry/:_authToken=${TestData.wifToken}`
+        ]);
+    });
+
+    it('rejects HTTP aliases before feedUrl filtering or WIF credential acquisition', async () => {
+        const secureRegistry = 'https://pkgs.dev.azure.com/testorg/_packaging/WifFeed/npm/registry/';
+        const insecureRegistry = 'http://pkgs.dev.azure.com/testorg/_packaging/OtherFeed/npm/registry/';
+        const npmrcPath = TestHelpers.createTempNpmrc(
+            `@secure:registry=${secureRegistry}\n@insecure:registry=${insecureRegistry}`
+        );
+        const tr = await TestHelpers.runTestWithEnv({
+            [TestEnvVars.npmrcPath]: npmrcPath,
+            [TestEnvVars.workloadIdentityServiceConnection]: TestData.wifServiceConnection,
+            [TestEnvVars.wifRegistryUrl]: secureRegistry,
+            [TestEnvVars.wifShouldFail]: 'true'
+        });
+
+        TestHelpers.assertFailure(tr);
+        TestHelpers.assertOutputContains(tr, 'Error_MixedRegistrySchemes');
+        assert.deepStrictEqual(TestHelpers.getAppendedAuth(tr, npmrcPath), []);
+    });
+
+    it('skips an HTTP registry even when selected by feedUrl', async () => {
+        const httpRegistry = 'http://pkgs.dev.azure.com/testorg/_packaging/HttpFeed/npm/registry/';
+        const npmrcPath = TestHelpers.createTempNpmrc(`registry=${httpRegistry}`);
+
+        const tr = await TestHelpers.runTestWithEnv({
+            [TestEnvVars.npmrcPath]: npmrcPath,
+            [TestEnvVars.workloadIdentityServiceConnection]: TestData.wifServiceConnection,
+            [TestEnvVars.wifRegistryUrl]: httpRegistry,
+            [TestEnvVars.wifToken]: TestData.wifToken
+        });
+
+        TestHelpers.assertSuccess(tr);
+        assert.deepStrictEqual(TestHelpers.getAppendedAuth(tr, npmrcPath), []);
+        TestHelpers.assertOutputContains(tr, 'Info_SkippingNonHttpsWifRegistry');
+        TestHelpers.assertOutputNotContains(tr, 'Info_SuccessAddingFederatedFeedAuth');
+    });
+
+    it('logs and skips malformed registries before feedUrl matching', async () => {
+        const npmrcPath = TestHelpers.createTempNpmrc(
+            `@invalid:registry=not-a-url\n@valid:registry=${TestData.wifRegistryUrl}`
+        );
+
+        const tr = await TestHelpers.runTestWithEnv({
+            [TestEnvVars.npmrcPath]: npmrcPath,
+            [TestEnvVars.workloadIdentityServiceConnection]: TestData.wifServiceConnection,
+            [TestEnvVars.wifRegistryUrl]: TestData.wifRegistryUrl,
+            [TestEnvVars.wifToken]: TestData.wifToken
+        });
+
+        TestHelpers.assertSuccess(tr);
+        TestHelpers.assertOutputContains(tr, 'InvalidRegistryUrl');
+        assert.strictEqual(tr.warningIssues.length, 0);
+        TestHelpers.assertNpmrcContains(npmrcPath, TestData.wifToken);
+    });
+
+    it('neutralizes logging commands in registry values from .npmrc', async () => {
+        const marker = '##vso[task.setvariable variable=unexpected;]injected';
+        const registry = `https://pkgs.dev.azure.com/test/#metadata${marker}`;
+        const npmrcPath = TestHelpers.createTempNpmrc(`registry="${registry}"`);
+
+        const tr = await TestHelpers.runTestWithEnv({
+            [TestEnvVars.npmrcPath]: npmrcPath,
+            [TestEnvVars.workloadIdentityServiceConnection]: TestData.wifServiceConnection,
+            [TestEnvVars.wifToken]: TestData.wifToken
+        });
+
+        TestHelpers.assertSuccess(tr);
+        const outputLines = tr.stdout.split(/\r?\n/);
+        const repositoryOutput = outputLines.find(line => line.includes('Info_AddingFederatedFeedAuth'));
+        assert(repositoryOutput, 'Expected the task to display the registry URL');
+        assert(repositoryOutput.includes('##_vso[task.setvariable variable=unexpected;]injected'));
+        assert(!outputLines.some(line => line.startsWith(marker)), 'Logging command must not begin an output line');
+    });
+
+    it('fails when feedUrl is provided without a service connection', async () => {
+        // Arrange: feedUrl is set but workloadIdentityServiceConnection is not
+        const npmrcPath = TestHelpers.createTempNpmrc(`registry=${TestData.wifRegistryUrl}`);
+
+        // Act
+        const tr = await TestHelpers.runTestWithEnv({
+            [TestEnvVars.npmrcPath]: npmrcPath,
+            [TestEnvVars.wifRegistryUrl]: TestData.wifRegistryUrl
+            // workloadIdentityServiceConnection intentionally not set
+        });
+
+        // Assert
+        TestHelpers.assertFailure(tr, 'Task should fail when feedUrl is set without a WIF service connection');
+        TestHelpers.assertOutputContains(tr, 'MissingFeedUrlOrServiceConnection');
+    });
+
+    it('fails when WIF token acquisition fails', async () => {
+        // Arrange: service connection is set but getFederatedWorkloadIdentityCredentials throws
+        const npmrcPath = TestHelpers.createTempNpmrc(`registry=${TestData.wifRegistryUrl}`);
+
+        // Act
+        const tr = await TestHelpers.runTestWithEnv({
+            [TestEnvVars.npmrcPath]: npmrcPath,
+            [TestEnvVars.workloadIdentityServiceConnection]: TestData.wifServiceConnection,
+            [TestEnvVars.wifRegistryUrl]: TestData.wifRegistryUrl,
+            [TestEnvVars.wifShouldFail]: 'true'
+        });
+
+        // Assert
+        TestHelpers.assertFailure(tr, 'Task should fail when federated token acquisition throws');
+    });
+
+    describe('feedUrl matching normalization', function () {
+        it('matches when feedUrl has no trailing slash but .npmrc does', async () => {
+            // feedUrl without slash, .npmrc with slash — should still match
+            const registryWithSlash = 'https://pkgs.dev.azure.com/testorg/_packaging/WifFeed/npm/registry/';
+            const feedUrlNoSlash = 'https://pkgs.dev.azure.com/testorg/_packaging/WifFeed/npm/registry';
+            const npmrcPath = TestHelpers.createTempNpmrc(`registry=${registryWithSlash}`);
+
+            const tr = await TestHelpers.runTestWithEnv({
+                [TestEnvVars.npmrcPath]: npmrcPath,
+                [TestEnvVars.workloadIdentityServiceConnection]: TestData.wifServiceConnection,
+                [TestEnvVars.wifRegistryUrl]: feedUrlNoSlash,
+                [TestEnvVars.wifToken]: TestData.wifToken
+            });
+
+            TestHelpers.assertSuccess(tr);
+            TestHelpers.assertNpmrcContains(npmrcPath, TestData.wifToken);
+        });
+
+        it('matches when feedUrl differs in case from .npmrc', async () => {
+            const registryMixedCase = 'https://PKGS.DEV.AZURE.COM/testorg/_packaging/WifFeed/npm/registry/';
+            const feedUrlLowerCase = 'https://pkgs.dev.azure.com/testorg/_packaging/WifFeed/npm/registry/';
+            const npmrcPath = TestHelpers.createTempNpmrc(`registry=${registryMixedCase}`);
+
+            const tr = await TestHelpers.runTestWithEnv({
+                [TestEnvVars.npmrcPath]: npmrcPath,
+                [TestEnvVars.workloadIdentityServiceConnection]: TestData.wifServiceConnection,
+                [TestEnvVars.wifRegistryUrl]: feedUrlLowerCase,
+                [TestEnvVars.wifToken]: TestData.wifToken
+            });
+
+            TestHelpers.assertSuccess(tr);
+            TestHelpers.assertNpmrcContains(npmrcPath, TestData.wifToken);
+        });
+
+        it('does not match when feedUrl path differs from .npmrc', async () => {
+            const npmrcRegistry = 'https://pkgs.dev.azure.com/testorg/_packaging/FeedA/npm/registry/';
+            const feedUrlDifferentPath = 'https://pkgs.dev.azure.com/testorg/_packaging/FeedB/npm/registry/';
+            const npmrcPath = TestHelpers.createTempNpmrc(`registry=${npmrcRegistry}`);
+
+            const tr = await TestHelpers.runTestWithEnv({
+                [TestEnvVars.npmrcPath]: npmrcPath,
+                [TestEnvVars.workloadIdentityServiceConnection]: TestData.wifServiceConnection,
+                [TestEnvVars.wifRegistryUrl]: feedUrlDifferentPath,
+                [TestEnvVars.wifToken]: TestData.wifToken
+            });
+
+            // feedUrl doesn't match any .npmrc entry → task should fail
+            TestHelpers.assertFailure(tr, 'Task should fail when feedUrl path does not match any registry');
+            TestHelpers.assertOutputContains(tr, 'IgnoringRegistry');
+        });
+    });
+});

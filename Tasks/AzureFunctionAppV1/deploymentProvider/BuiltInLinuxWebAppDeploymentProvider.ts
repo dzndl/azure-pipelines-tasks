@@ -1,15 +1,14 @@
-import { AzureRmWebAppDeploymentProvider } from './AzureRmWebAppDeploymentProvider';
 import tl = require('azure-pipelines-task-lib/task');
-import { PackageType } from 'azure-pipelines-tasks-azurermdeploycommon/webdeployment-common/packageUtility';
 import path = require('path');
-import * as ParameterParser from 'azure-pipelines-tasks-azurermdeploycommon/operations/ParameterParserUtility'
-
-var webCommonUtility = require('azure-pipelines-tasks-azurermdeploycommon/webdeployment-common/utility.js');
-var zipUtility = require('azure-pipelines-tasks-azurermdeploycommon/webdeployment-common/ziputility.js');
+var webCommonUtility = require('azure-pipelines-tasks-webdeployment-common/utility');
+var zipUtility = require('azure-pipelines-tasks-webdeployment-common/ziputility');
+import { PackageType } from 'azure-pipelines-tasks-webdeployment-common/packageUtility';
+import * as ParameterParser from 'azure-pipelines-tasks-webdeployment-common/ParameterParserUtility'
+import { AzureRmWebAppDeploymentProvider } from './AzureRmWebAppDeploymentProvider';
 
 const linuxFunctionStorageSetting: string = '-WEBSITES_ENABLE_APP_SERVICE_STORAGE true';
 const linuxFunctionRuntimeSettingName: string = '-FUNCTIONS_WORKER_RUNTIME ';
-const premiumPlanRunsFromPackage: string = ' -WEBSITE_RUN_FROM_PACKAGE true';
+const premiumPlanRunsFromPackage: string = ' -WEBSITE_RUN_FROM_PACKAGE 1';
 
 const linuxFunctionRuntimeSettingValue = new Map([
     [ 'DOCKER|microsoft/azure-functions-dotnet-core2.0:2.0', 'dotnet ' ],
@@ -17,15 +16,34 @@ const linuxFunctionRuntimeSettingValue = new Map([
     [ 'DOCKER|microsoft/azure-functions-python3.6:2.0', 'python '],
     [ 'DOTNET|2.2', 'dotnet ' ],
     [ 'DOTNET|3.1', 'dotnet ' ],
+    [ 'DOTNET|6.0', 'dotnet ' ],
+    [ 'DOTNET-ISOLATED|6.0', 'dotnet-isolated '],
+    [ 'DOTNET-ISOLATED|7.0', 'dotnet-isolated '],
+    [ 'DOTNET-ISOLATED|8.0', 'dotnet-isolated '],
+    [ 'DOTNET-ISOLATED|9.0', 'dotnet-isolated '],
+    [ 'DOTNET-ISOLATED|10.0', 'dotnet-isolated '],
     [ 'JAVA|8', 'java ' ],
     [ 'JAVA|11', 'java ' ],
+    [ 'JAVA|17', 'java ' ],
+    [ 'JAVA|21', 'java ' ],
+    [ 'JAVA|25', 'java ' ],
     [ 'NODE|8', 'node ' ],
     [ 'NODE|10', 'node ' ],
     [ 'NODE|12', 'node ' ],
     [ 'NODE|14', 'node ' ],
+    [ 'NODE|16', 'node ' ],
+    [ 'NODE|18', 'node ' ],
+    [ 'NODE|20', 'node ' ],
+    [ 'NODE|22', 'node ' ],
+    [ 'NODE|24', 'node ' ],
     [ 'PYTHON|3.6', 'python '],
     [ 'PYTHON|3.7', 'python '],
-    [ 'PYTHON|3.8', 'python ']
+    [ 'PYTHON|3.8', 'python '],
+    [ 'PYTHON|3.9', 'python '],
+    [ 'PYTHON|3.10', 'python '],
+    [ 'PYTHON|3.11', 'python '],
+    [ 'PYTHON|3.12', 'python '],
+    [ 'PYTHON|3.13', 'python ']
 ]);
 
 export class BuiltInLinuxWebAppDeploymentProvider extends AzureRmWebAppDeploymentProvider {
@@ -38,7 +56,7 @@ export class BuiltInLinuxWebAppDeploymentProvider extends AzureRmWebAppDeploymen
 
         tl.debug('Performing Linux built-in package deployment');
         var isNewValueUpdated: boolean = false;
-        
+
         var linuxFunctionRuntimeSetting = "";
         if(this.taskParams.RuntimeStack && linuxFunctionRuntimeSettingValue.get(this.taskParams.RuntimeStack)) {
             linuxFunctionRuntimeSetting = linuxFunctionRuntimeSettingName + linuxFunctionRuntimeSettingValue.get(this.taskParams.RuntimeStack);
@@ -50,11 +68,11 @@ export class BuiltInLinuxWebAppDeploymentProvider extends AzureRmWebAppDeploymen
 
         var customApplicationSetting = ParameterParser.parse(linuxFunctionAppSetting);
         isNewValueUpdated = await this.appServiceUtility.updateAndMonitorAppSettings(customApplicationSetting);
-        
+
         if(!isNewValueUpdated) {
             await this.kuduServiceUtility.warmpUp();
         }
-        
+
         switch(packageType){
             case PackageType.folder:
                 let tempPackagePath = webCommonUtility.generateTemporaryFolderOrZipPath(tl.getVariable('AGENT.TEMPDIRECTORY'), false);
@@ -92,7 +110,7 @@ export class BuiltInLinuxWebAppDeploymentProvider extends AzureRmWebAppDeploymen
             case PackageType.war:
                 tl.debug("Initiated deployment via kudu service for webapp war package : "+ this.taskParams.Package.getPath());
                 var warName = webCommonUtility.getFileNameFromPath(this.taskParams.Package.getPath(), ".war");
-                this.zipDeploymentID = await this.kuduServiceUtility.deployUsingWarDeploy(this.taskParams.Package.getPath(), 
+                this.zipDeploymentID = await this.kuduServiceUtility.deployUsingWarDeploy(this.taskParams.Package.getPath(),
                 { slotName: this.appService.getSlot() }, warName);
             break;
 

@@ -76,6 +76,10 @@ The following parameters are shown when the selected action is to create or upda
  ### Deployment Outputs:
   Outputs created by Azure Resource Manager template deployment. It can be used in the subsequent tasks (like Powershell and Azure CLI) for further processing.
 
+  With `DistributedTask.Tasks.EnableSafeArmDeploymentOutputVariables` enabled, safe output handling requires agent 2.184.0 or newer with percent decoding enabled. With no overrides, supported agents enable decoding by default. `DECODE_PERCENTS` is interpreted without trimming: `true`, `1`, and `$true` (case-insensitive) enable decoding; surrounding whitespace and whitespace-only values disable it.
+
+  Incompatible configurations retain legacy output handling with a warning. This fallback does not provide the safe format's protection. The task does not change `DECODE_PERCENTS`. If agent-worker and task environments differ, the task cannot independently inspect the worker's effective setting; use an explicit nonempty job-level `DECODE_PERCENTS` value to avoid that ambiguity.
+
  **How to use Deployment output**
   The deployment output can be parsed to JSON object using "ConvertFrom-Json" Powershell cmdlet in Powershell/Azure Powershell task and then that object can be used in same task or subsequent tasks.
 
@@ -104,8 +108,35 @@ The following parameters are shown when the selected action is to create or upda
   sed -e 's/]"/]/g'`
   sa_name=`echo $var | jq -r .storageAccountName.value`
   echo $sa_name
+
+  ```
+  In case, you're accessing individual output values directly, values are being set after being converted via JSON.Stringify. To change this behavior, `Use individual output values without JSON.Stringify applied` checkbox can be used:
+
+  Example:
+  Let's assume, we've `outputvalue` as output of the deployment.
+
+  `Use individual output values without JSON.Stringify applied` set to `false (default)`
+  ```
+  outputvalue => JSON.stringify(outputvalue) => "outputvalue":
+
+  // setting variable as JSON.stringify's result
+  ##vso[task.setvariable variable=taskdeploymentoutputname.outputkey]"outputvalue"
+
+  // variable will be read as JSON.stringify's result
+  $(outputvalue) => "outputvalue"
   ```
 
+  `Use individual output values without JSON.Stringify applied` set to `true`
+  ```
+  outputvalue => no operation:
+
+  // setting variable as it is
+  ##vso[task.setvariable variable=taskdeploymentoutputname.outputkey]outputvalue
+
+  // variable will be read as it is
+  $(outputvalue) => outputvalue
+  ```
+  
  ### Advanced deployment options for virtual machines:
  
  These options would be applicable only when the Resource group contains virtual machines.
@@ -137,7 +168,7 @@ Carry out the following steps to create a Deployment group:
 
 ### Setting up a virtual machine for WinRM HTTPS using Azure Templates:
 
-Tasks like Azure File Copy, PowerShell on Target Machines, Visual Studio Test Agent Deployment run on the automation agent machine and copy files or deploy apps to Azure VMs using the WinRM HTTPS protocol. For these tasks to work properly, the WinRM HTTPS port (default port is 5986) needs to be opened and configured properly on the virtual machines. Opening the ports and configuring them with the certificates is done using the Azure templates. The [sample template](https://aka.ms/sampletemplate) uploaded on GitHub shows how to enable the WinRM HTTPS protocol on Azure virtual machines and map them to a Public IP using the Azure resource providers' wiz. Network Interfaces, Load Balancers and Virtual Machines. In addition, it also shows how to specify the Azure Key Vault and its secret, and to download and install the certificate on the virtual machine.
+Tasks like Azure File Copy, PowerShell on Target Machines, Visual Studio Test Agent Deployment run on the automation agent machine and copy files or deploy apps to Azure VMs using the WinRM HTTPS protocol. For these tasks to work properly, the WinRM HTTPS port (default port is 5986) needs to be opened and configured properly on the virtual machines. Opening the ports and configuring them with the certificates is done using the Azure templates. The [sample template](https://github.com/Azure/azure-quickstart-templates/tree/master/demos/vm-winrm-windows) uploaded on GitHub shows how to enable the WinRM HTTPS protocol on Azure virtual machines and map them to a Public IP using the Azure resource providers' wiz. Network Interfaces, Load Balancers and Virtual Machines. In addition, it also shows how to specify the Azure Key Vault and its secret, and to download and install the certificate on the virtual machine.
 
 ### Supported Azure and AzureRM module versions:
 |  Azure Pipelines/TFS Release  |  Recommended Azure Version  |  Other Supported Versions |

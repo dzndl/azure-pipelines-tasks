@@ -1,21 +1,29 @@
 {
   "name": "Agent.Tasks.Gradle",
-  "version": "2.139.1",
+  "version": "2.208.0",
   "author": "Microsoft Corporation",
   "description": "Build with Gradle",
+  "scripts": {
+    "build": "node ../../make.js build --task GradleV3",
+    "serverBuild": "node ../../make.js serverBuild --task GradleV3"
+  },
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/Microsoft/vso-agent-tasks/issues"
   },
   "dependencies": {
-    "@types/node": "^10.17.0",
     "@types/mocha": "^5.2.7",
-    "azure-pipelines-task-lib": "^3.1.6",
-    "azure-pipelines-tasks-codecoverage-tools": "2.0.2",
-    "azure-pipelines-tasks-java-common": "2.0.0-preview.0",
-    "azure-pipelines-tasks-codeanalysis-common": "2.0.2"
+    "@types/node": "^24.10.0",
+    "azure-pipelines-task-lib": "^5.281.1",
+    "azure-pipelines-tasks-codeanalysis-common": "^2.281.0",
+    "azure-pipelines-tasks-codecoverage-tools": "^3.281.0",
+    "azure-pipelines-tasks-java-common": "^2.281.0",
+    "azure-pipelines-tasks-utility-common": "^3.281.0"
   },
   "devDependencies": {
-    "typescript": "4.0.2"
+    "typescript": "^5.7.2"
+  },
+  "overrides": {
+    "serialize-javascript": "7.0.5"
   }
 }

@@ -1,8 +1,8 @@
-import computeManagementClient = require("azure-pipelines-tasks-azure-arm-rest-v2/azure-arm-compute");
+import computeManagementClient = require("azure-pipelines-tasks-azure-arm-rest/azure-arm-compute");
 import tl = require("azure-pipelines-task-lib/task");
 import azure_utils = require("./AzureUtil");
 import deployAzureRG = require("../models/DeployAzureRG");
-import az = require("azure-pipelines-tasks-azure-arm-rest-v2/azureModels");
+import az = require("azure-pipelines-tasks-azure-arm-rest/azureModels");
 import utils = require("./Utils");
 
 export class DeploymentGroupExtensionHelper {
@@ -71,7 +71,7 @@ export class DeploymentGroupExtensionHelper {
                     return reject(tl.loc("DeletionFailed", vmName, utils.getError(error)));
                 }
                 console.log(tl.loc("DeletionSucceeded", vmName));
-                resolve();
+                resolve(null);
             });
         });
     }
@@ -140,7 +140,7 @@ export class DeploymentGroupExtensionHelper {
                     }
                 }
                 console.log(tl.loc("VMStarted", vmName));
-                resolve();
+                resolve(null);
             });
         });
     }
@@ -172,7 +172,7 @@ export class DeploymentGroupExtensionHelper {
                         return reject(error);
                     }
                     console.log(tl.loc("AddingExtensionSucceeded", extensionName, vmName));
-                    resolve();
+                    resolve(null);
                 });
             });
         })

@@ -4,6 +4,8 @@
   "description": "Retrieves the specified version of Python from the tool cache. Optionally add it to PATH.",
   "main": "usepythonversion.js",
   "scripts": {
+    "build": "node ../../make.js build --task UsePythonVersionV0",
+    "serverBuild": "node ../../make.js serverBuild --task UsePythonVersionV0",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -23,14 +25,16 @@
   },
   "homepage": "https://github.com/Microsoft/azure-pipelines-tasks#readme",
   "dependencies": {
-    "@types/node": "^10.17.0",
-    "@types/q": "^1.0.7",
     "@types/mocha": "^5.2.7",
-    "azure-pipelines-task-lib": "^3.1.0",
-    "azure-pipelines-tasks-utility-common": "^3.0.3",
-    "azure-pipelines-tool-lib": "^1.0.2"
+    "@types/node": "^24.10.0",
+    "@types/q": "^1.0.7",
+    "azure-pipelines-task-lib": "^5.280.3",
+    "azure-pipelines-tasks-utility-common": "^3.281.0",
+    "azure-pipelines-tool-lib": "^2.281.0",
+    "semver": "^7.5.4",
+    "typed-rest-client": "^3.1.2"
   },
   "devDependencies": {
-    "typescript": "4.0.2"
+    "typescript": "^5.7.2"
   }
 }

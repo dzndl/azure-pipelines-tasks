@@ -1,12 +1,13 @@
 "use strict";
 import * as path from "path";
 import * as tl from "azure-pipelines-task-lib/task";
-import ContainerConnection from "azure-pipelines-tasks-docker-common-v2/containerconnection";
-import * as pipelineUtils from "azure-pipelines-tasks-docker-common-v2/pipelineutils";
-import * as fileUtils from "azure-pipelines-tasks-docker-common-v2/fileutils";
-import * as sourceUtils from "azure-pipelines-tasks-docker-common-v2/sourceutils";
-import * as imageUtils from "azure-pipelines-tasks-docker-common-v2/containerimageutils";
+import ContainerConnection from "azure-pipelines-tasks-docker-common/containerconnection";
+import * as pipelineUtils from "azure-pipelines-tasks-docker-common/pipelineutils";
+import * as fileUtils from "azure-pipelines-tasks-docker-common/fileutils";
+import * as sourceUtils from "azure-pipelines-tasks-docker-common/sourceutils";
+import * as imageUtils from "azure-pipelines-tasks-docker-common/containerimageutils";
 import * as utils from "./utils";
+import { createSanitizedExecOptions } from "azure-pipelines-tasks-docker-common/dockercommandutils";
 
 export function run(connection: ContainerConnection): any {
     var command = connection.createCommand();
@@ -77,7 +78,19 @@ export function run(connection: ContainerConnection): any {
         output += data;
     });
 
-    return connection.execCommand(command).then(() => {
+    let err: string = "";
+    command.on("stderr", data =>{
+        err += data;
+    });
+
+    return connection.execCommand(command, createSanitizedExecOptions()).then(() => {
+        if (isBuildKitEnabled())
+        {
+            // Build kit output the build results to stderr instead of stdout
+            // https://github.com/moby/moby/issues/40031
+            output = err;
+        }
+
         let taskOutputPath = utils.writeTaskOutput("build", output);
         tl.setVariable("DockerOutputPath", taskOutputPath);
 
@@ -86,4 +99,10 @@ export function run(connection: ContainerConnection): any {
             imageUtils.shareBuiltImageId(builtImageId);
         }
     });
+}
+
+function isBuildKitEnabled(): boolean {
+    // https://docs.docker.com/develop/develop-images/build_enhancements/
+    const isBuildKitBuildValue = tl.getVariable("DOCKER_BUILDKIT");
+    return isBuildKitBuildValue && Number(isBuildKitBuildValue) == 1;
 }

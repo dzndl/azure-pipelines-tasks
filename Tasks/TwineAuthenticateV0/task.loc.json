@@ -9,14 +9,14 @@
   "category": "Package",
   "version": {
     "Major": 0,
-    "Minor": 179,
+    "Minor": 282,
     "Patch": 0
   },
   "runsOn": [
     "Agent",
     "DeploymentGroup"
   ],
-  "minimumAgentVersion": "2.115.0",
+  "minimumAgentVersion": "2.144.0",
   "instanceNameFormat": "ms-resource:loc.instanceNameFormat",
   "groups": [
     {
@@ -81,12 +81,25 @@
     }
   ],
   "execution": {
-    "Node": {
+    "Node10": {
+      "target": "twineauthenticatemain.js",
+      "argumentFormat": ""
+    },
+    "Node16": {
+      "target": "twineauthenticatemain.js",
+      "argumentFormat": ""
+    },
+    "Node20_1": {
+      "target": "twineauthenticatemain.js",
+      "argumentFormat": ""
+    },
+    "Node24": {
       "target": "twineauthenticatemain.js",
       "argumentFormat": ""
     }
   },
   "messages": {
+    "TaskDeprecationNotice": "ms-resource:loc.messages.TaskDeprecationNotice",
     "Info_AddingInternalFeeds": "ms-resource:loc.messages.Info_AddingInternalFeeds",
     "Info_AddingExternalFeeds": "ms-resource:loc.messages.Info_AddingExternalFeeds",
     "Info_AddingAuthForRegistry": "ms-resource:loc.messages.Info_AddingAuthForRegistry",
@@ -106,7 +119,19 @@
     "Warning_SessionCreationFailed": "ms-resource:loc.messages.Warning_SessionCreationFailed"
   },
   "postjobexecution": {
-    "Node": {
+    "Node10": {
+      "target": "authcleanup.js",
+      "argumentFormat": ""
+    },
+    "Node16": {
+      "target": "authcleanup.js",
+      "argumentFormat": ""
+    },
+    "Node20_1": {
+      "target": "authcleanup.js",
+      "argumentFormat": ""
+    },
+    "Node24": {
       "target": "authcleanup.js",
       "argumentFormat": ""
     }

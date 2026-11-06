@@ -16,7 +16,7 @@
   "author": "Microsoft Corporation",
   "version": {
     "Major": 1,
-    "Minor": 193,
+    "Minor": 282,
     "Patch": 0
   },
   "satisfies": [
@@ -28,12 +28,32 @@
   "instanceNameFormat": "ms-resource:loc.instanceNameFormat",
   "inputs": [
     {
+      "name": "versionSource",
+      "type": "radio",
+      "label": "ms-resource:loc.input.label.versionSource",
+      "required": true,
+      "defaultValue": "spec",
+      "options": {
+        "spec": "Specify Node version",
+        "fromFile": "Get version from file"
+      }
+    },
+    {
       "name": "version",
       "type": "string",
       "label": "ms-resource:loc.input.label.version",
       "defaultValue": "10.x",
       "required": false,
-      "helpMarkDown": "ms-resource:loc.input.help.version"
+      "helpMarkDown": "ms-resource:loc.input.help.version",
+      "visibleRule": "versionSource = spec"
+    },
+    {
+      "name": "versionFilePath",
+      "type": "string",
+      "label": "ms-resource:loc.input.label.versionFilePath",
+      "required": false,
+      "helpMarkDown": "ms-resource:loc.input.help.versionFilePath",
+      "visibleRule": "versionSource = fromFile"
     },
     {
       "name": "checkLatest",
@@ -50,15 +70,61 @@
       "defaultValue": "false",
       "required": false,
       "helpMarkDown": "ms-resource:loc.input.help.force32bit"
+    },
+    {
+      "name": "nodejsMirror",
+      "type": "string",
+      "label": "ms-resource:loc.input.label.nodejsMirror",
+      "defaultValue": "https://nodejs.org/dist",
+      "required": false,
+      "groupName": "advanced",
+      "helpMarkDown": "ms-resource:loc.input.help.nodejsMirror"
+    },
+    {
+      "name": "retryCountOnDownloadFails",
+      "type": "string",
+      "label": "ms-resource:loc.input.label.retryCountOnDownloadFails",
+      "defaultValue": "5",
+      "required": false,
+      "groupName": "advanced",
+      "helpMarkDown": "ms-resource:loc.input.help.retryCountOnDownloadFails"
+    },
+    {
+      "name": "delayBetweenRetries",
+      "type": "string",
+      "label": "ms-resource:loc.input.label.delayBetweenRetries",
+      "defaultValue": "1000",
+      "required": false,
+      "groupName": "advanced",
+      "helpMarkDown": "ms-resource:loc.input.help.delayBetweenRetries"
     }
   ],
   "execution": {
     "Node10": {
       "target": "usenode.js",
       "argumentFormat": ""
+    },
+    "Node16": {
+      "target": "usenode.js",
+      "argumentFormat": ""
+    },
+    "Node20_1": {
+      "target": "usenode.js",
+      "argumentFormat": ""
+    },
+    "Node24": {
+      "target": "usenode.js",
+      "argumentFormat": ""
     }
   },
   "messages": {
-    "ToolFailed": "ms-resource:loc.messages.ToolFailed"
+    "ToolFailed": "ms-resource:loc.messages.ToolFailed",
+    "TryRosetta": "ms-resource:loc.messages.TryRosetta",
+    "NodeVersionNotFound": "ms-resource:loc.messages.NodeVersionNotFound",
+    "UnexpectedOS": "ms-resource:loc.messages.UnexpectedOS",
+    "AgentTempDirNotSet": "ms-resource:loc.messages.AgentTempDirNotSet",
+    "InvalidNodejsMirror": "ms-resource:loc.messages.InvalidNodejsMirror",
+    "VersionFileIsEmpty": "ms-resource:loc.messages.VersionFileIsEmpty",
+    "InvalidVersionSpecification": "ms-resource:loc.messages.InvalidVersionSpecification"
   }
 }

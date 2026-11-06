@@ -17,10 +17,10 @@
   "demands": [],
   "version": {
     "Major": 2,
-    "Minor": 187,
-    "Patch": 0
+    "Minor": 281,
+    "Patch": 1
   },
-  "minimumAgentVersion": "2.115.0",
+  "minimumAgentVersion": "2.144.0",
   "instanceNameFormat": "ms-resource:loc.instanceNameFormat",
   "groups": [
     {
@@ -67,6 +67,16 @@
     }
   ],
   "inputs": [
+    {
+      "name": "ConnectedServiceName",
+      "aliases": [
+        "azureSubscription"
+      ],
+      "type": "connectedService:AzureRM",
+      "label": "ms-resource:loc.input.label.ConnectedServiceName",
+      "defaultValue": "",
+      "helpMarkDown": "ms-resource:loc.input.help.ConnectedServiceName"
+    },
     {
       "name": "command",
       "type": "pickList",
@@ -262,7 +272,7 @@
       "name": "verbosityRestore",
       "type": "pickList",
       "label": "ms-resource:loc.input.label.verbosityRestore",
-      "defaultValue": "Detailed",
+      "defaultValue": "Normal",
       "helpMarkDown": "ms-resource:loc.input.help.verbosityRestore",
       "required": "false",
       "groupName": "restoreAdvanced",
@@ -409,7 +419,8 @@
         "off": "Off",
         "byPrereleaseNumber": "Use the date and time",
         "byEnvVar": "Use an environment variable",
-        "byBuildNumber": "Use the build number"
+        "byBuildNumber": "Use the build number",
+        "bySemVerBuildNumber": "Use full SemVer build number"
       }
     },
     {
@@ -474,7 +485,7 @@
       "name": "verbosityPack",
       "type": "pickList",
       "label": "ms-resource:loc.input.label.verbosityPack",
-      "defaultValue": "Detailed",
+      "defaultValue": "Normal",
       "helpMarkDown": "ms-resource:loc.input.help.verbosityPack",
       "required": "false",
       "groupName": "packAdvanced",
@@ -495,6 +506,14 @@
       "required": "false",
       "groupName": "generalAdvanced",
       "visibleRule": "command != restore && command != push && command != pack"
+    },
+    {
+      "name": "requestTimeout",
+      "type": "int",
+      "label": "ms-resource:loc.input.label.requestTimeout",
+      "defaultValue": 300000,
+      "required": false,
+      "helpMarkDown": "ms-resource:loc.input.help.requestTimeout"
     }
   ],
   "dataSourceBindings": [
@@ -515,6 +534,18 @@
   ],
   "execution": {
     "Node10": {
+      "target": "dotnetcore.js",
+      "argumentFormat": ""
+    },
+    "Node16": {
+      "target": "dotnetcore.js",
+      "argumentFormat": ""
+    },
+    "Node20_1": {
+      "target": "dotnetcore.js",
+      "argumentFormat": ""
+    },
+    "Node24": {
       "target": "dotnetcore.js",
       "argumentFormat": ""
     }
@@ -573,6 +604,10 @@
     "Warning_UpdatingNuGetVersion": "ms-resource:loc.messages.Warning_UpdatingNuGetVersion",
     "Net5Update": "ms-resource:loc.messages.Net5Update",
     "Net5NugetVersionCompat": "ms-resource:loc.messages.Net5NugetVersionCompat",
-    "DeprecatedDotnet2_2_And_3_0": "ms-resource:loc.messages.DeprecatedDotnet2_2_And_3_0"
+    "DeprecatedDotnet2_2_And_3_0": "ms-resource:loc.messages.DeprecatedDotnet2_2_And_3_0",
+    "Warning_IncludeNuGetOrgEnabled": "ms-resource:loc.messages.Warning_IncludeNuGetOrgEnabled",
+    "Error_IncludeNuGetOrgEnabled": "ms-resource:loc.messages.Error_IncludeNuGetOrgEnabled",
+    "Warning_UnsupportedServiceConnectionAuth": "ms-resource:loc.messages.Warning_UnsupportedServiceConnectionAuth",
+    "Error_InvalidSemVer": "ms-resource:loc.messages.Error_InvalidSemVer"
   }
 }

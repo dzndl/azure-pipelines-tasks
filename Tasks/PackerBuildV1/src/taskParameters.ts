@@ -1,11 +1,12 @@
 "use strict";
 
 import * as path from "path";
+import * as os from "os";
 import * as tl from "azure-pipelines-task-lib/task";
 import * as constants from "./constants";
 import * as utils from "./utilities";
-import { AzureRMEndpoint } from "azure-pipelines-tasks-azure-arm-rest-v2/azure-arm-endpoint";
-import msRestAzure = require("azure-pipelines-tasks-azure-arm-rest-v2/azure-arm-common");
+import { AzureRMEndpoint } from "azure-pipelines-tasks-azure-arm-rest/azure-arm-endpoint";
+import msRestAzure = require("azure-pipelines-tasks-azure-arm-rest/azure-arm-common");
 
 export default class TaskParameters {
     public templateType: string;
@@ -20,7 +21,9 @@ export default class TaskParameters {
     public builtinBaseImage: string;
     public customBaseImageUrl: string;
     public isManagedImage: boolean;
+    public canDeleteTempFolder: boolean;
     public managedImageName: string;
+    public canDeleteTempFolderInputName: string;
     public imagePublisher: string;
     public imageOffer: string;
     public imageSku: string;
@@ -55,9 +58,12 @@ export default class TaskParameters {
                 this.storageAccount = tl.getInput(constants.StorageAccountInputName, true);
                 this.location = tl.getInput(constants.LocationInputName, true);
                 this.isManagedImage = tl.getBoolInput(constants.ManagedImageInputName, false);
-
+                this.canDeleteTempFolder = tl.getBoolInput(constants.canDeleteTempFolderInputName, false);
                 if (this.isManagedImage) {
                     this.managedImageName = tl.getInput(constants.ManagedImageNameInputName, true);
+                }
+                if (this.canDeleteTempFolder) {
+                    this.canDeleteTempFolderInputName = tl.getInput(constants.canDeleteTempFolderInputName, true);
                 }
 
                 this.baseImageSource = tl.getInput(constants.BaseImageSourceInputName, true);
@@ -73,13 +79,13 @@ export default class TaskParameters {
 
                 console.log(tl.loc("ResolvingDeployPackageInput"));
                 this.packagePath = this._getResolvedPath(tl.getVariable('System.DefaultWorkingDirectory'), tl.getInput(constants.DeployPackageInputName, true));
-                console.log(tl.loc("ResolvedDeployPackgePath", this.packagePath));
+                tl.writeExternalOutput(tl.loc("ResolvedDeployPackgePath", this.packagePath) + os.EOL, { source: "repository" });
 
                 console.log(tl.loc("ResolvingDeployScriptInput"));
                 var deployScriptAbsolutePath = this._getResolvedPath(this.packagePath, tl.getInput(constants.DeployScriptPathInputName, true));
                 var scriptRelativePath = path.relative(this.packagePath, deployScriptAbsolutePath);
                 this.deployScriptPath = this._normalizeRelativePathForTargetOS(scriptRelativePath);
-                console.log(tl.loc("ResolvedDeployScriptPath", this.deployScriptPath));
+                tl.writeExternalOutput(tl.loc("ResolvedDeployScriptPath", this.deployScriptPath) + os.EOL, { source: "repository" });
 
                 this.deployScriptArguments = tl.getInput(constants.DeployScriptArgumentsInputName, false);
 
@@ -129,5 +135,10 @@ export default class TaskParameters {
     private async getGraphCredentials(connectedService: string): Promise<msRestAzure.ApplicationTokenCredentials> {
         var azureEndpoint = await new AzureRMEndpoint(connectedService).getEndpoint(true);
         return azureEndpoint.applicationTokenCredentials;
+    }
+
+    public async getEndpoint(connectedService: string) {
+        const endpoint =  await new AzureRMEndpoint(connectedService).getEndpoint();
+        return endpoint;
     }
 }

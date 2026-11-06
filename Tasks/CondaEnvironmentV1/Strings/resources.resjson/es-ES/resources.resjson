@@ -1,6 +1,6 @@
 {
-  "loc.friendlyName": "Entorno de conda",
-  "loc.helpMarkDown": "[Learn more about this task](https://aka.ms/pipelines-anaconda-guide)<br>[Task documentation](https://go.microsoft.com/fwlink/?linkid=873466)",
+  "loc.friendlyName": "Entorno de Conda",
+  "loc.helpMarkDown": "[Obtener más información acerca de esta tarea](https://aka.ms/pipelines-anaconda-guide)<br>[Documentación de tareas](https://go.microsoft.com/fwlink/?linkid=873466)",
   "loc.description": "Esta tarea está en desuso. Use \"conda\" directamente en el script para trabajar con entornos de Anaconda.",
   "loc.instanceNameFormat": "Entorno de Conda $(environmentName)",
   "loc.input.label.createCustomEnvironment": "Crear un entorno personalizado",
@@ -24,5 +24,6 @@
   "loc.messages.ReactivateExistingEnvironment": "Se encontró el entorno existente %s y no se estableció el parámetro \"Limpiar entorno\" de la tarea. Reactivando...",
   "loc.messages.ParameterRequired": "El parámetro \"%s\" es obligatorio",
   "loc.messages.PlatformNotRecognized": "Plataforma no reconocida",
-  "loc.messages.PrependPath": "Anteponer la variable de entorno PATH con el directorio: %s"
+  "loc.messages.PrependPath": "Anteponer la variable de entorno PATH con el directorio: %s",
+  "loc.messages.DeprecatedTask": "La tarea CondaEnvironment@1 (entorno de Conda) está en desuso desde el 13 de febrero de 2019 y pronto se retirará. Use la CLI de Conda (\"conda\") directamente desde una tarea bash/pwsh/script. Visite https://aka.ms/azdo-deprecated-tasks para obtener más información sobre las tareas en desuso."
 }

@@ -1,9 +1,11 @@
 {
   "name": "azuredevops-tasks-containerstructuretest",
-  "version": "1.0.1",
+  "version": "1.211.2",
   "description": "Azure Pipelines Container Structure Test execution Task",
   "main": "containerstructuretest.js",
   "scripts": {
+    "build": "node ../../make.js build --task ContainerStructureTestV0",
+    "serverBuild": "node ../../make.js serverBuild --task ContainerStructureTestV0",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -17,12 +19,22 @@
   },
   "homepage": "https://github.com/Microsoft/azure-pipelines-tasks#readme",
   "dependencies": {
-    "@types/node": "^6.0.101",
+    "@types/mocha": "^5.2.7",
+    "@types/node": "^20.11.0",
     "@types/q": "^1.0.7",
-    "azure-pipelines-task-lib": "2.8.0",
-    "azure-pipelines-tasks-docker-common-v2": "1.0.0",
-    "utility-common": "file:../../_build/Tasks/Common/utility-common-1.0.2.tgz",
-    "utility-common-v2": "file:../../_build/Tasks/Common/utility-common-v2-2.0.0.tgz",
-    "uuid": "^3.0.1"
+    "@types/uuid": "^8.3.0",
+    "agent-base": "^6.0.2",
+    "azure-pipelines-task-lib": "^4.1.0",
+    "azure-pipelines-tasks-docker-common": "2.280.4",
+    "azure-pipelines-tasks-utility-common": "3.272.0",
+    "azure-pipelines-tool-lib": "^2.0.12",
+    "typed-rest-client": "^1.8.11"
+  },
+  "devDependencies": {
+    "typescript": "5.1.6"
+  },
+  "overrides": {
+    "minimatch": "3.1.5",
+    "@azure/identity": "4.13.2"
   }
 }

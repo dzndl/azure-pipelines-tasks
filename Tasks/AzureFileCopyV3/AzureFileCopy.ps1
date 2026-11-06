@@ -3,6 +3,10 @@ param()
 
 Trace-VstsEnteringInvocation $MyInvocation
 
+$featureFlags = @{
+    retireAzureRM = [System.Convert]::ToBoolean($env:RETIRE_AZURERM_POWERSHELL_MODULE)
+}
+
 # Get inputs for the task
 $sourcePath = Get-VstsInput -Name SourcePath -Require
 $destination = Get-VstsInput -Name Destination -Require
@@ -62,15 +66,7 @@ Import-Module $PSScriptRoot\ps_modules\RemoteDeployer
 
 # Initialize Azure.
 Import-Module $PSScriptRoot\ps_modules\VstsAzureHelpers_
-
-$endpoint = Get-VstsEndpoint -Name $connectedServiceName -Require
-if (Get-Module Az.Accounts -ListAvailable){
-    Initialize-AzModule -Endpoint $endpoint
-}
-else{
-    Update-PSModulePathForHostedAgentWithLatestModule -Endpoint $endpoint
-    Initialize-AzureRMModule -Endpoint $endpoint
-}
+try {
 
 # Import the loc strings.
 Import-VstsLocStrings -LiteralPath $PSScriptRoot/Task.json
@@ -79,14 +75,56 @@ Import-VstsLocStrings -LiteralPath $PSScriptRoot/Task.json
 . "$PSScriptRoot\AzureFileCopyRemoteJob.ps1"
 . "$PSScriptRoot\Utility.ps1"
 
+$endpoint = Get-VstsEndpoint -Name $connectedServiceName -Require
+$vstsEndpoint = Get-VstsEndpoint -Name SystemVssConnection -Require
+$vstsAccessToken = $vstsEndpoint.auth.parameters.AccessToken
+
+if ($featureFlags.retireAzureRM) {
+    CleanUp-PSModulePathForHostedAgent
+    Write-Verbose "Initializing Az Module."
+    $encryptedToken = ConvertTo-SecureString $vstsAccessToken -AsPlainText -Force
+    Initialize-AzModule -Endpoint $endpoint -connectedServiceNameARM $connectedServiceName -encryptedToken $encryptedToken
+} else {
+    if (Get-Module Az.Accounts -ListAvailable) {
+        $encryptedToken = ConvertTo-SecureString $vstsAccessToken -AsPlainText -Force
+        Initialize-AzModule -Endpoint $endpoint -connectedServiceNameARM $connectedServiceName -encryptedToken $encryptedToken
+    }
+    else {
+        Write-Warning "Module Az.Accounts is unavailable"
+        Update-PSModulePathForHostedAgentWithLatestModule -Endpoint $endpoint
+        Initialize-AzureRMModule -Endpoint $endpoint
+    }
+}
+
 # Enabling detailed logging only when system.debug is true
 $enableDetailedLogging = ($env:system_debug -eq "true")
 
 # Telemetry
 Import-Module $PSScriptRoot\ps_modules\TelemetryHelper
 
+# Sanitizer
+Import-Module $PSScriptRoot\ps_modules\Sanitizer
+$useSanitizerCall = Get-SanitizerCallStatus
+$useSanitizerActivate = Get-SanitizerActivateStatus
+$useSourcePathHardening = Get-SourcePathHardeningFeatureFlag
+
+if ($useSanitizerCall) {
+    $sanitizedArgumentsForBlobCopy = Protect-ScriptArguments -InputArgs $additionalArgumentsForBlobCopy -TaskName "AzureFileCopyV3"
+    $sanitizedArgumentsForVMCopy = Protect-ScriptArguments -InputArgs $additionalArgumentsForVMCopy -TaskName "AzureFileCopyV3"
+}
+
+if ($useSanitizerActivate) {
+    if ($useSourcePathHardening) {
+        $additionalArgumentsForBlobCopy = Join-SanitizedArguments -arguments $sanitizedArgumentsForBlobCopy
+        $additionalArgumentsForVMCopy = Join-SanitizedArguments -arguments $sanitizedArgumentsForVMCopy
+    }
+    else {
+        $additionalArgumentsForBlobCopy = $sanitizedArgumentsForBlobCopy -join " "
+        $additionalArgumentsForVMCopy = $sanitizedArgumentsForVMCopy -join " "
+    }
+}
+
 #### MAIN EXECUTION OF AZURE FILE COPY TASK BEGINS HERE ####
-try {
     try
     {
         # Importing required version of azure cmdlets according to azureps installed on machine
@@ -100,13 +138,13 @@ try {
         Write-Host "##vso[telemetry.publish area=TaskEndpointId;feature=AzureFileCopy]$telemetryJsonContent"
 
         # Getting storage key for the storage account
-        $storageKey = Get-StorageKey -storageAccountName $storageAccount -endpoint $endpoint
+        $storageKey = Get-StorageKey -storageAccountName $storageAccount -endpoint $endpoint -connectedServiceNameARM $connectedServiceName
 
         # creating storage context to be used while creating container, sas token, deleting container
         $storageContext = Create-AzureStorageContext -StorageAccountName $storageAccount -StorageAccountKey $storageKey
-        
+
         # Geting Azure Storage Account type
-        $storageAccountType = Get-StorageAccountType -storageAccountName $storageAccount -endpoint $endpoint
+        $storageAccountType = Get-StorageAccountType $storageAccount $endpoint $connectedServiceName
         Write-Verbose "Obtained Storage Account type: $storageAccountType"
         if(-not [string]::IsNullOrEmpty($storageAccountType) -and $storageAccountType.Contains('Premium'))
         {
@@ -119,7 +157,7 @@ try {
             $containerName = [guid]::NewGuid().ToString()
             Create-AzureContainer -containerName $containerName -storageContext $storageContext -isPremiumStorage $isPremiumStorage
         }
-        
+
         # Getting Azure Blob Storage Endpoint
         $blobStorageEndpoint = Get-blobStorageEndpoint -storageAccountName $storageAccount -endpoint $endpoint
 
@@ -178,8 +216,10 @@ try {
                                 -additionalArguments $additionalArgumentsForBlobCopy `
                                 -destinationType $destination `
                                 -useDefaultArguments $useDefaultArgumentsForBlobCopy `
-                                -azCopyLogFilePath $logFilePath
-    
+                                -azCopyLogFilePath $logFilePath `
+                                -useSanitizerActivate $useSanitizerActivate `
+                                -useSourcePathHardening $useSourcePathHardening
+
     # Complete the task if destination is azure blob
     if ($destination -eq "AzureBlob")
     {
@@ -197,7 +237,7 @@ try {
 
         Remove-EndpointSecrets
         Write-Verbose "Completed Azure File Copy Task for Azure Blob Destination"
-        
+
         return
     }
 
@@ -207,11 +247,12 @@ try {
         # Normalize admin username
         if($vmsAdminUserName -and (-not $vmsAdminUserName.StartsWith(".\")) -and ($vmsAdminUserName.IndexOf("\") -eq -1) -and ($vmsAdminUserName.IndexOf("@") -eq -1))
         {
-            $vmsAdminUserName = ".\" + $vmsAdminUserName 
+            $vmsAdminUserName = ".\" + $vmsAdminUserName
         }
         # getting azure vms properties(name, fqdn, winrmhttps port)
         $azureVMResourcesProperties = Get-AzureVMResourcesProperties -resourceGroupName $environmentName `
-        -resourceFilteringMethod $resourceFilteringMethod -machineNames $machineNames -enableCopyPrerequisites $enableCopyPrerequisites -connectedServiceName $connectedServiceName
+            -resourceFilteringMethod $resourceFilteringMethod -machineNames $machineNames -enableCopyPrerequisites $enableCopyPrerequisites `
+            -connectedServiceName $connectedServiceName
 
         $azureVMsCredentials = Get-AzureVMsCredentials -vmsAdminUserName $vmsAdminUserName -vmsAdminPassword $vmsAdminPassword
 
@@ -223,7 +264,7 @@ try {
         # generate container sas token with full permissions
         $containerSasToken = Generate-AzureStorageContainerSASToken -containerName $containerName -storageContext $storageContext -tokenTimeOutInMinutes $sasTokenTimeOutInMinutes
 
-        # Copies files on azureVMs 
+        # Copies files on azureVMs
         Copy-FilesToAzureVMsFromStorageContainer -targetMachineNames $invokeRemoteScriptParams.targetMachineNames `
                                                 -credential $invokeRemoteScriptParams.credential `
                                                 -protocol $invokeRemoteScriptParams.protocol `
@@ -237,7 +278,9 @@ try {
                                                 -additionalArguments $additionalArgumentsForVMCopy `
                                                 -azCopyToolLocation $azCopyLocation `
                                                 -fileCopyJobScript $AzureFileCopyRemoteJob `
-                                                -enableDetailedLogging $enableDetailedLogging
+                                                -enableDetailedLogging $enableDetailedLogging `
+                                                -useSanitizerActivate $useSanitizerActivate `
+                                                -useSourcePathHardening $useSourcePathHardening
 
         Write-Output (Get-VstsLocString -Key "AFC_CopySuccessful" -ArgumentList $sourcePath, $environmentName)
     }
@@ -257,5 +300,6 @@ try {
     }
 }
 finally {
+    Remove-EndpointSecrets
     Disconnect-AzureAndClearContext -authScheme $endpoint.Auth.Scheme -ErrorAction SilentlyContinue
 }

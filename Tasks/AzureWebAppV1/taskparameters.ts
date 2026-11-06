@@ -1,11 +1,12 @@
-import { AzureEndpoint } from 'azure-pipelines-tasks-azurermdeploycommon/azure-arm-rest/azureModels';
 import tl = require('azure-pipelines-task-lib/task');
-import { Package, PackageType } from 'azure-pipelines-tasks-azurermdeploycommon/webdeployment-common/packageUtility';
-var webCommonUtility = require('azure-pipelines-tasks-azurermdeploycommon/webdeployment-common/utility.js');
-import { AzureRMEndpoint } from 'azure-pipelines-tasks-azurermdeploycommon/azure-arm-rest/azure-arm-endpoint';
-import { AzureResourceFilterUtility } from 'azure-pipelines-tasks-azurermdeploycommon/operations/AzureResourceFilterUtility';
-import { AzureAppService } from 'azure-pipelines-tasks-azurermdeploycommon/azure-arm-rest/azure-arm-app-service';
-import { AzureRmEndpointAuthenticationScheme } from 'azure-pipelines-tasks-azurermdeploycommon/azure-arm-rest/constants';
+var webCommonUtility = require('azure-pipelines-tasks-webdeployment-common/utility');
+import { AzureRMEndpoint } from 'azure-pipelines-tasks-azure-arm-rest/azure-arm-endpoint';
+import { Resources } from 'azure-pipelines-tasks-azure-arm-rest/azure-arm-resource';
+import { AzureAppService } from 'azure-pipelines-tasks-azure-arm-rest/azure-arm-app-service';
+import { AzureEndpoint } from 'azure-pipelines-tasks-azure-arm-rest/azureModels';
+import { AzureRmEndpointAuthenticationScheme } from 'azure-pipelines-tasks-azure-arm-rest/constants';
+import { Package, PackageType } from 'azure-pipelines-tasks-webdeployment-common/packageUtility';
+import { SiteContainer } from 'azure-pipelines-tasks-azure-arm-rest/SiteContainer';
 
 const webAppKindMap = new Map([
     [ 'app', 'webApp' ],
@@ -50,6 +51,15 @@ export class TaskParametersUtility {
 
         taskParameters.DeploymentType = DeploymentType[(tl.getInput('deploymentMethod', false))];
 
+        // Used for siteContainers apps.
+        const siteContainersConfigInput = tl.getInput('siteContainersConfig');
+        if (siteContainersConfigInput) {
+            const raw = JSON.parse(siteContainersConfigInput);
+            taskParameters.SiteContainers =  raw.map(SiteContainer.fromJson);
+        } else {
+            taskParameters.SiteContainers = null;
+        }
+
         return taskParameters;
     }
 
@@ -58,7 +68,8 @@ export class TaskParametersUtility {
         var kind = taskParameters.WebAppKind;
         if (taskParameters.azureEndpoint.scheme.toLowerCase() != AzureRmEndpointAuthenticationScheme.PublishProfile) {
             if (!resourceGroupName) {
-                var appDetails = await AzureResourceFilterUtility.getAppDetails(taskParameters.azureEndpoint, taskParameters.WebAppName);
+                var resources = new Resources(taskParameters.azureEndpoint);
+                var appDetails = await resources.getAppDetails(taskParameters.WebAppName);
                 resourceGroupName = appDetails["resourceGroupName"];
                 if(!kind) {
                     kind = webAppKindMap.get(appDetails["kind"]) ? webAppKindMap.get(appDetails["kind"]) : appDetails["kind"];
@@ -128,4 +139,5 @@ export interface TaskParameters {
     /** Additional parameters */
     azureEndpoint?: AzureEndpoint;
     isLinuxApp?: boolean;
+    SiteContainers?: SiteContainer[];
 }

@@ -3,6 +3,7 @@ param()
 
 # Arrange.
 . $PSScriptRoot\..\..\..\Tests\lib\Initialize-Test.ps1
+Register-Mock Invoke-ScriptArgumentSanitization
 $targetAzurePs = "4.1.0"
 Register-Mock Get-VstsInput { "FilePath" } -- -Name ScriptType -Require
 Register-Mock Get-VstsInput { "$PSScriptRoot/PerformsBasicFlow_TargetScript.ps1" } -- -Name ScriptPath
@@ -21,6 +22,7 @@ Register-Mock Invoke-VstsTool { }
 Register-Mock Expand-ModuleZip
 Register-Mock Invoke-RestMethod
 Register-Mock Save-Module
+Register-Mock ConvertTo-SecureString
 
 # Act.
 $actual = & $PSScriptRoot\..\AzurePowerShell.ps1
